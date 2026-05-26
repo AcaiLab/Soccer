@@ -9,8 +9,8 @@ frames_root = base_out / "frames"
 clips_root.mkdir(parents=True, exist_ok=True)
 frames_root.mkdir(parents=True, exist_ok=True)
 
-CLIP_BEFORE_SEC = 15     # seconds before event
-CLIP_AFTER_SEC  = 15     # seconds after event
+CLIP_BEFORE_SEC = 30     # seconds before event
+CLIP_AFTER_SEC  = 30     # seconds after event
 FRAME_SAMPLING_EVERY_SEC = 1  # save one frame every 1 second
 
 def parse_time_stamp(mm_ss: str) -> float:

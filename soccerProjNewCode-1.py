@@ -13,8 +13,8 @@ args = parser.parse_args()
 project_folder = pathlib.Path(args.project_folder)
 base_out = pathlib.Path(args.out)
 
-CLIP_BEFORE_SEC = 15
-CLIP_AFTER_SEC = 15
+CLIP_BEFORE_SEC = 30
+CLIP_AFTER_SEC = 30
 FRAME_SAMPLING_EVERY_SEC = 1
 
 # ----------------------------
@@ -175,12 +175,18 @@ def process_match(match_folder: pathlib.Path, output_base: pathlib.Path):
     half1_frames.mkdir(parents=True, exist_ok=True)
     half2_clips.mkdir(parents=True, exist_ok=True)
     half2_frames.mkdir(parents=True, exist_ok=True)
-    
+
+    # Copy the full JSON to the game output folder
+    import shutil
+    json_out = match_out / json_path.name
+    shutil.copy2(json_path, json_out)
+    print(f"Saved JSON -> {json_out.name}")
+
     # Process first half
     if ts_half1_unique:
         print(f"\n--- Processing First Half ---")
         process_half(video_half1_path, ts_half1_unique, half1_clips, half1_frames)
-    
+
     # Process second half
     if ts_half2_unique:
         print(f"\n--- Processing Second Half ---")
@@ -221,7 +227,7 @@ def process_half(video_path: pathlib.Path, timestamps: list, clips_dir: pathlib.
                             CLIP_BEFORE_SEC, CLIP_AFTER_SEC, tag, clips_dir, frames_dir)
     
     cap.release()
-    print(f"Extracted clips → {clips_dir.name}, frames → {frames_dir.name}")
+    print(f"Extracted clips -> {clips_dir.name}, frames -> {frames_dir.name}")
 
 # ----------------------------
 # Main execution
