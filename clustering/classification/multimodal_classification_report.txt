@@ -1,0 +1,33 @@
+Best model: Multimodal (visual + annot) + MLP
+Test games: ['25', '26', '27', '28', '29', '30']
+
+                                precision    recall  f1-score   support
+
+              ball_out_of_play       0.00      0.00      0.00         4
+               ball_possession       0.14      0.27      0.19        11
+                     clearance       0.29      0.25      0.27        56
+                        corner       0.37      0.60      0.45        62
+              end_of_half_game       0.62      0.67      0.65        15
+          foul_lead_to_penalty       0.00      0.00      0.00         1
+             foul_with_no_card       0.29      0.27      0.28        30
+                     free_kick       0.00      0.00      0.00         6
+                          goal       0.46      0.64      0.53        25
+                        injury       0.25      0.10      0.14        10
+                lead_to_corner       0.43      0.17      0.24        18
+                      off_side       0.10      0.11      0.10        18
+                       penalty       0.00      0.00      0.00         1
+                      red_card       0.00      0.00      0.00         4
+          saved_by_goal-keeper       0.20      0.19      0.20        21
+               shot_off_target       0.19      0.20      0.20        35
+               show_added_time       0.00      0.00      0.00        10
+            start_of_half_game       0.62      0.67      0.64        12
+        statistics_and_summary       0.00      0.00      0.00         4
+                  substitution       0.58      0.53      0.55        34
+                       unknown       0.00      0.00      0.00         2
+                           var       0.00      0.00      0.00        10
+wcl-icon-settings-info-rounded       0.00      0.00      0.00         3
+                   yellow_card       0.23      0.22      0.23        27
+
+                      accuracy                           0.33       419
+                     macro avg       0.20      0.20      0.19       419
+                  weighted avg       0.30      0.33      0.30       419

@@ -46,6 +46,10 @@ parser.add_argument("--hidden-dim", type=int, default=512)
 parser.add_argument("--output-dim", type=int, default=256)
 parser.add_argument("--batch-size", type=int, default=256)
 parser.add_argument("--seed", type=int, default=42)
+parser.add_argument("--train-games", nargs="+", default=None,
+                    help="Game IDs to mine triplets from (e.g. 01 02 ... 24). "
+                         "All events are still projected/saved. "
+                         "Default: all games (leaky for downstream eval).")
 parser.add_argument("--device", default=None)
 args = parser.parse_args()
 
@@ -91,7 +95,16 @@ game_to_indices = defaultdict(list)
 # (label, game) -> list of event indices
 label_game_to_indices = defaultdict(list)
 
-for i, (lab, gam) in enumerate(zip(labels, games)):
+if args.train_games is not None:
+    train_games = set(args.train_games)
+    train_indices = [i for i in range(n_events) if games[i] in train_games]
+    print(f"  Triplet mining restricted to {len(train_games)} train games "
+          f"({len(train_indices)} / {n_events} events)")
+else:
+    train_indices = list(range(n_events))
+
+for i in train_indices:
+    lab, gam = labels[i], games[i]
     label_to_indices[lab].append(i)
     game_to_indices[gam].append(i)
     label_game_to_indices[(lab, gam)].append(i)
@@ -103,7 +116,7 @@ for lab in label_to_indices:
     if len(games_with_label) >= 2:
         eligible_labels.add(lab)
 
-eligible_indices = [i for i in range(n_events) if labels[i] in eligible_labels]
+eligible_indices = [i for i in train_indices if labels[i] in eligible_labels]
 print(f"  Eligible labels (in 2+ games): {len(eligible_labels)}")
 print(f"  Eligible events: {len(eligible_indices)} / {n_events}")
 
@@ -147,9 +160,9 @@ class TripletDataset(Dataset):
         neg_candidates = [i for i in self.game_to_idx[anchor_game]
                           if self.labels[i] != anchor_label]
         if not neg_candidates:
-            # Fallback: different label, any game
-            neg_candidates = [i for i in range(len(self.labels))
-                              if self.labels[i] != anchor_label]
+            # Fallback: different label, any train game
+            neg_candidates = [i for lst in self.label_to_idx.values()
+                              for i in lst if self.labels[i] != anchor_label]
         neg_idx = random.choice(neg_candidates)
 
         return (self.features[anchor_idx],

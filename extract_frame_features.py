@@ -104,7 +104,8 @@ for game_half_dir in sorted(frames_root.iterdir()):
             continue
         label = label_dir.name
 
-        for img_path in sorted(label_dir.glob("*.png")):
+        for img_path in sorted(list(label_dir.glob("*.png")) +
+                               list(label_dir.glob("*.jpg"))):
             records.append({
                 "game":     game_id,
                 "half":     half_id,

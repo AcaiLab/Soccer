@@ -38,7 +38,7 @@ from tqdm import tqdm
 
 # Matches the event_tag and frame_tag at the end of frame filenames.
 # Works regardless of how many underscores the label name has.
-FRAME_RE = re.compile(r'_frame_(\d{2}-\d{2}\.\d{3})_t(\d{2}-\d{2}\.\d{3})\.png$')
+FRAME_RE = re.compile(r'_frame_(\d{2}-\d{2}\.\d{3})_t(\d{2}-\d{2}\.\d{3})\.(?:png|jpg)$')
 
 
 def tag_to_sec(tag: str) -> float:
@@ -122,7 +122,8 @@ for game_half_dir in sorted(frames_root.iterdir()):
             continue
         label = label_dir.name
 
-        for img_path in sorted(label_dir.glob("*.png")):
+        for img_path in sorted(list(label_dir.glob("*.png")) +
+                               list(label_dir.glob("*.jpg"))):
             m = FRAME_RE.search(img_path.name)
             if not m:
                 continue

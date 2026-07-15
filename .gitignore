@@ -1,9 +1,14 @@
 # ── Large data & extracted frames ──────────────────────────────────────────
-data/                        # raw videos and JSON files (~12 GB)
-results_by_label_epl_2021_2022/  # extracted frames (~22 GB)
+# raw videos and JSON files
+data/
+# extracted frames
+results_by_label_epl_2021_2022/
+# Dropbox listings and access token
+tmp_dbx/
 
 # ── Model outputs / features ────────────────────────────────────────────────
-features/                    # extracted feature files (.npy, .npz, .pkl)
+# extracted feature files (.npy, .npz, .pkl)
+features/
 features_log.txt
 
 # ── Python cache ────────────────────────────────────────────────────────────
@@ -27,8 +32,8 @@ Thumbs.db
 *.swp
 .vscode/
 
-# ── Claude Code internal state ───────────────────────────────────────────────
 .claude/
 
-# ── Temp files from process_10_games.py ─────────────────────────────────────
+# ── Temp files from processing scripts ──────────────────────────────────────
 temp_extract.py
+temp_extract_*.py

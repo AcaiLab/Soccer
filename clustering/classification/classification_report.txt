@@ -1,0 +1,29 @@
+Best model: Contrastive triplet_projected + LinearSVM
+Test games: ['09', '10']
+
+                        precision    recall  f1-score   support
+
+      ball_out_of_play       1.00      1.00      1.00         2
+       ball_possession       1.00      1.00      1.00         3
+             clearance       1.00      0.90      0.95        10
+                corner       1.00      1.00      1.00        17
+      end_of_half_game       1.00      1.00      1.00         4
+     foul_with_no_card       0.89      1.00      0.94         8
+             free_kick       1.00      1.00      1.00         1
+                  goal       0.75      1.00      0.86         3
+                injury       0.67      1.00      0.80         2
+        lead_to_corner       1.00      1.00      1.00         6
+              off_side       1.00      1.00      1.00         3
+              red_card       1.00      1.00      1.00         1
+  saved_by_goal-keeper       1.00      1.00      1.00         7
+       shot_off_target       1.00      0.92      0.96        13
+       show_added_time       1.00      0.75      0.86         4
+    start_of_half_game       1.00      1.00      1.00         4
+statistics_and_summary       1.00      1.00      1.00         2
+          substitution       0.88      0.88      0.88         8
+                   var       1.00      1.00      1.00         2
+           yellow_card       1.00      1.00      1.00         6
+
+              accuracy                           0.96       106
+             macro avg       0.96      0.97      0.96       106
+          weighted avg       0.97      0.96      0.96       106

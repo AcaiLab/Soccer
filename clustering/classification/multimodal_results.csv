@@ -1,0 +1,19 @@
+Features,Classifier,Accuracy,Dim
+"Multimodal
+(visual + annot)",MLP,0.3269689737470167,782-dim
+"Visual only
+(DINOv2 attn)",MLP,0.3126491646778043,768-dim
+"Multimodal
+(visual + annot)",LogReg,0.27923627684964203,782-dim
+"Visual only
+(DINOv2 attn)",LogReg,0.27684964200477324,768-dim
+"Visual only
+(DINOv2 attn)",LinearSVM,0.21957040572792363,768-dim
+"Multimodal
+(visual + annot)",LinearSVM,0.2100238663484487,782-dim
+"Annotation only
+(game flow)",LinearSVM,0.1957040572792363,14-dim
+"Annotation only
+(game flow)",LogReg,0.17899761336515513,14-dim
+"Annotation only
+(game flow)",MLP,0.15513126491646778,14-dim
