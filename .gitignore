@@ -6,6 +6,9 @@ results_by_label_epl_2021_2022/
 # Dropbox listings and access token
 tmp_dbx/
 
+# ── Commentary review data (large binary files) ────────────────────────────
+commentary_review/
+
 # ── Model outputs / features ────────────────────────────────────────────────
 # extracted feature files (.npy, .npz, .pkl)
 features/

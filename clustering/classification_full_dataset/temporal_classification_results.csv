@@ -1,0 +1,25 @@
+Features,Classifier,Accuracy,n_features
+"Full temporal
+(all features)",HistGradBoost,0.3115175764504144,14
+"+ Previous
+events",HistGradBoost,0.3075164332666476,8
+"Full temporal
+(all features)",RandomForest,0.2997999428408117,14
+"+ Previous
+events",RandomForest,0.29951414689911404,8
+"+ Rolling
+counts",HistGradBoost,0.29236924835667333,8
+"+ Rolling
+counts",RandomForest,0.2829379822806516,8
+"Full temporal
+(all features)",LogReg,0.2652186338953987,14
+"Baseline
+(half+minute)",RandomForest,0.2529294084024007,2
+"Baseline
+(half+minute)",HistGradBoost,0.25150042869391254,2
+"+ Previous
+events",LogReg,0.24435553015147185,8
+"+ Rolling
+counts",LogReg,0.23406687625035724,8
+"Baseline
+(half+minute)",LogReg,0.19719919977136324,2

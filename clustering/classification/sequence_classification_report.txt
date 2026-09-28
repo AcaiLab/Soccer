@@ -1,0 +1,32 @@
+Best model: Transformer
+
+                                precision    recall  f1-score   support
+
+              ball_out_of_play       0.00      0.00      0.00         8
+               ball_possession       0.00      0.00      0.00        22
+                     clearance       0.24      0.38      0.29       112
+                        corner       0.25      0.50      0.33       123
+              end_of_half_game       0.32      0.42      0.37        26
+          foul_lead_to_penalty       0.00      0.00      0.00         2
+             foul_with_no_card       0.13      0.17      0.15        60
+                     free_kick       0.00      0.00      0.00        12
+                          goal       0.31      0.22      0.26        50
+                        injury       0.22      0.30      0.26        20
+                lead_to_corner       0.00      0.00      0.00        34
+                      off_side       0.00      0.00      0.00        34
+                       penalty       0.00      0.00      0.00         2
+                      red_card       0.00      0.00      0.00         8
+          saved_by_goal-keeper       0.00      0.00      0.00        39
+               shot_off_target       0.12      0.20      0.15        70
+               show_added_time       0.00      0.00      0.00        12
+            start_of_half_game       0.30      0.58      0.40        12
+        statistics_and_summary       0.00      0.00      0.00         8
+                  substitution       0.32      0.26      0.29        68
+                       unknown       0.00      0.00      0.00         4
+                           var       0.00      0.00      0.00        20
+wcl-icon-settings-info-rounded       0.00      0.00      0.00         6
+                   yellow_card       0.21      0.06      0.09        53
+
+                      accuracy                           0.23       805
+                     macro avg       0.10      0.13      0.11       805
+                  weighted avg       0.17      0.23      0.19       805
