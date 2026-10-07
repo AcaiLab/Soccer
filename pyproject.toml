@@ -1,0 +1,31 @@
+[project]
+name = "soccer-vision"
+version = "0.1.0"
+description = "Event understanding in broadcast soccer video with frozen vision foundation models"
+requires-python = ">=3.10"
+readme = "README.md"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["soccer"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+extend-exclude = [".venv", "data", "features", "results_by_label_epl_2021_2022"]
+
+[tool.ruff.lint]
+# pyflakes, pycodestyle errors, import sorting, common bug patterns
+select = ["F", "E", "I", "B"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# Scripts named with a hyphen are not importable; keep them out of import sorting rules.
+"soccerProjNewCode-1.py" = ["I"]

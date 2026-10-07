@@ -1,0 +1,4 @@
+# Test and lint tools. CI installs these plus the CPU-only runtime subset in
+# requirements-ci.txt; the tests never import torch or download models.
+pytest==8.3.3
+ruff==0.6.9
