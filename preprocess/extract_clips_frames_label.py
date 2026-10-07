@@ -1,168 +1,55 @@
-import json, re, pathlib, cv2
+"""Extract event-centred frames from one half's video, organised by event label.
 
-video_path = "/Users/yuntingyin/Documents/Research/Soccer/watford-fc-liverpool-fc_1.mkv"
-json_path  = "/Users/yuntingyin/Documents/Research/Soccer/2017-08-12_Watford_3-3_Liverpool_AaZvBO5T.json"
+Only the events of the half the video holds are extracted: comment timestamps
+restart at 0:00 each half, so cutting the other half's events would attach
+their labels to unrelated footage (docs/leak_audit.md, B3).
 
-base_out   = pathlib.Path("extracts_first_half")
-clips_root = base_out / "clips"
-frames_root = base_out / "frames"
-clips_root.mkdir(parents=True, exist_ok=True)
-frames_root.mkdir(parents=True, exist_ok=True)
+Output: <out>/frames/<label>/<label>_frame_<event MM-SS.sss>_t<frame MM-SS.sss>.jpg
 
-CLIP_BEFORE_SEC = 30     # seconds before event
-CLIP_AFTER_SEC  = 30     # seconds after event
-FRAME_SAMPLING_EVERY_SEC = 1  # save one frame every 1 second
+Usage:
+    python preprocess/extract_clips_frames_label.py \
+        --video data/videos/<match>/<match>_1.mkv --json <match>.json \
+        --out results_by_label_epl_2021_2022/game_01_half_1
 
-def parse_time_stamp(mm_ss: str) -> float:
-    if not mm_ss:
-        raise ValueError("Empty timestamp")
-    m = re.fullmatch(r'(\d+)(?:\+(\d+))?:(\d{2})', mm_ss.strip())
-    if not m:
-        raise ValueError(f"Unrecognized time format: {mm_ss!r}")
-    mm = int(m.group(1))
-    added = int(m.group(2)) if m.group(2) else 0
-    ss = int(m.group(3))
-    return (mm + added) * 60 + ss
+Window, sampling rate and image format default to configs/pipeline.yaml.
+Requires the repo package to be importable (`pip install -e .`).
+"""
 
-def norm_ts_for_filename(ts: str) -> str:
-    sec = parse_time_stamp(ts)
-    m = int(sec // 60)
-    s = sec - 60 * m
-    return f"{m:02d}-{s:06.3f}"   
+import argparse
 
-def sanitize_event_name(s: str) -> str:
-    s = (s or "unknown").strip().lower()
-    s = s.replace("&", "and")
-    s = re.sub(r"\s+", "_", s)
-    s = re.sub(r"[^a-z0-9_\-]+", "", s)
-    return s or "unknown"
+from soccer.annotations import detect_half, events_for_half, load_comments
+from soccer.config import load_config
+from soccer.extract import ExtractionSettings, extract_events
 
-def seek_frame(cap, frame_idx: int) -> bool:
-    return cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
 
-# Comment timestamps restart at 0:00 in each half, and each video file holds one
-# half, so only this half's comments may be cut from it. Without this filter every
-# event is also cut from the other half's video under its label (47% wrong-half
-# events on game 01). Wrappers pass one video per half named *_1.mkv / *_2.mkv.
-VIDEO_HALF = None  # set to 1 or 2 to override detection from the file name
+def main(argv=None):
+    ex = load_config()["extraction"]
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--video", required=True, help="one half's video, named *_1.* or *_2.*")
+    parser.add_argument("--json", required=True, help="the match's annotation JSON")
+    parser.add_argument("--out", required=True, help="output folder for this half")
+    parser.add_argument("--half", type=int, choices=[1, 2], default=None,
+                        help="override the half detected from the video file name")
+    parser.add_argument("--before", type=float, default=ex["before_sec"])
+    parser.add_argument("--after", type=float, default=ex["after_sec"])
+    parser.add_argument("--every", type=int, default=ex["sample_every_sec"])
+    parser.add_argument("--format", choices=["jpg", "png"], default=ex["image_format"])
+    parser.add_argument("--clips", action="store_true", default=ex["write_clips"],
+                        help="also write an .mp4 clip per event")
+    args = parser.parse_args(argv)
 
-def detect_half(path: str) -> int:
-    m = re.search(r"_([12])\.[A-Za-z0-9]+$", path)
-    if not m:
-        raise ValueError(f"Cannot tell which half {path!r} holds; set VIDEO_HALF")
-    return int(m.group(1))
+    half = args.half or detect_half(args.video)
+    comments = load_comments(args.json)
+    events = events_for_half(comments, half)
+    other = sum(1 for c in comments if c.get("time_stamp") and c.get("half") in (1, 2) and c["half"] != half)
+    print(f"Half {half}: {len(events)} events to extract, {other} timestamped comments from the other half skipped")
 
-video_half = VIDEO_HALF or detect_half(video_path)
+    settings = ExtractionSettings(args.before, args.after, args.every, args.format,
+                                  ex["jpeg_quality"], args.clips)
+    stats = extract_events(args.video, events, args.out, settings)
+    print(f"Extracted {stats.frames} frames for {stats.events} events "
+          f"({stats.skipped} outside the video) -> {args.out}")
 
-with open(json_path, "r", encoding="utf-8") as f:
-    data = json.load(f)
 
-pairs = []
-seen = set()
-other_half = 0
-for c in data.get("comments", []):
-    ts = c.get("time_stamp", "")
-    if not ts:
-        continue
-    event = c.get("comments_type", "unknown")
-    half = c.get("half", None)
-    if half != video_half:
-        other_half += 1
-        continue
-    key = (half, ts, event)
-    if key in seen:
-        continue
-    seen.add(key)
-    pairs.append((ts, event, half))
-
-print(f"Half {video_half}: {len(pairs)} events to extract, "
-      f"{other_half} timestamped comments from the other half skipped")
-
-if not pairs:
-    print("No timestamps found.")
-    raise SystemExit
-
-# sort by time
-pairs.sort(key=lambda x: parse_time_stamp(x[0]))
-
-cap = cv2.VideoCapture(video_path)
-if not cap.isOpened():
-    raise RuntimeError(f"Could not open {video_path}")
-
-fps = cap.get(cv2.CAP_PROP_FPS)
-total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-duration_sec = total_frames / fps if fps > 0 else 0.0
-w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-
-print(f"Video FPS: {fps:.3f}, frames: {total_frames}, duration: {duration_sec:.2f}s")
-fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-
-def write_clip_and_frames(center_sec: float, before_sec: float, after_sec: float,
-                          tag_ts: str, event_name: str):
-    event_dir = sanitize_event_name(event_name)
-
-    clips_dir = clips_root / event_dir
-    frames_dir = frames_root / event_dir
-    clips_dir.mkdir(parents=True, exist_ok=True)
-    frames_dir.mkdir(parents=True, exist_ok=True)
-
-    start_sec = max(0.0, center_sec - before_sec)
-    end_sec   = min(duration_sec, center_sec + after_sec)
-
-    start_f = int(round(start_sec * fps))
-    end_f   = int(round(end_sec   * fps))
-    if end_f <= start_f:
-        print(f"Skipping {event_dir}@{tag_ts}: no valid range.")
-        return
-
-    # embed event name + timestamp in mp4 filename
-    clip_name = clips_dir / f"{event_dir}_clip_{tag_ts}_{start_sec:08.3f}s_to_{end_sec:08.3f}s.mp4"
-    vout = cv2.VideoWriter(str(clip_name), fourcc, fps, (w, h))
-    if not vout.isOpened():
-        print(f"Warning: cannot open writer for {clip_name}")
-        return
-
-    seek_frame(cap, start_f)
-
-    save_idxs = {
-        int(round((start_sec + t) * fps))
-        for t in range(0, int(round(end_sec - start_sec)) + 1, FRAME_SAMPLING_EVERY_SEC)
-    }
-
-    wrote = 0
-    idx = start_f
-    while idx < end_f:
-        ok, frame = cap.read()
-        if not ok:
-            break
-
-        vout.write(frame)
-
-        if idx in save_idxs:
-            t_abs = idx / fps
-            m = int(t_abs // 60)
-            s = t_abs - 60 * m
-            label = f"{m:02d}-{s:06.3f}"
-
-            out_png = frames_dir / f"{event_dir}_frame_{tag_ts}_t{label}.png"
-            cv2.imwrite(str(out_png), frame)
-
-        wrote += 1
-        idx += 1
-
-    vout.release()
-    print(f"{event_dir}@{tag_ts}: wrote {wrote} frames to {clip_name.name}")
-
-for ts, event, half in pairs:
-    try:
-        center_sec = parse_time_stamp(ts)
-    except ValueError as e:
-        print(f"Skipping bad timestamp {ts}: {e}")
-        continue
-
-    tag_ts = norm_ts_for_filename(ts)
-    write_clip_and_frames(center_sec, CLIP_BEFORE_SEC, CLIP_AFTER_SEC, tag_ts, event)
-
-cap.release()
-print(f"Extracted clips -> {clips_root}, frames -> {frames_root}")
+if __name__ == "__main__":
+    main()
