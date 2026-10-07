@@ -40,22 +40,43 @@ def sanitize_event_name(s: str) -> str:
 def seek_frame(cap, frame_idx: int) -> bool:
     return cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
 
+# Comment timestamps restart at 0:00 in each half, and each video file holds one
+# half, so only this half's comments may be cut from it. Without this filter every
+# event is also cut from the other half's video under its label (47% wrong-half
+# events on game 01). Wrappers pass one video per half named *_1.mkv / *_2.mkv.
+VIDEO_HALF = None  # set to 1 or 2 to override detection from the file name
+
+def detect_half(path: str) -> int:
+    m = re.search(r"_([12])\.[A-Za-z0-9]+$", path)
+    if not m:
+        raise ValueError(f"Cannot tell which half {path!r} holds; set VIDEO_HALF")
+    return int(m.group(1))
+
+video_half = VIDEO_HALF or detect_half(video_path)
+
 with open(json_path, "r", encoding="utf-8") as f:
     data = json.load(f)
 
 pairs = []
 seen = set()
+other_half = 0
 for c in data.get("comments", []):
     ts = c.get("time_stamp", "")
     if not ts:
         continue
     event = c.get("comments_type", "unknown")
     half = c.get("half", None)
+    if half != video_half:
+        other_half += 1
+        continue
     key = (half, ts, event)
     if key in seen:
         continue
     seen.add(key)
     pairs.append((ts, event, half))
+
+print(f"Half {video_half}: {len(pairs)} events to extract, "
+      f"{other_half} timestamped comments from the other half skipped")
 
 if not pairs:
     print("No timestamps found.")
@@ -144,4 +165,4 @@ for ts, event, half in pairs:
     write_clip_and_frames(center_sec, CLIP_BEFORE_SEC, CLIP_AFTER_SEC, tag_ts, event)
 
 cap.release()
-print(f"Extracted Clips → {clips_root}, Frames → {frames_root}")
+print(f"Extracted clips -> {clips_root}, frames -> {frames_root}")
