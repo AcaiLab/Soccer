@@ -1,0 +1,47 @@
+# Pipeline configuration. Every script reads its defaults from here; any value
+# can still be overridden on the command line.
+#
+# Paths are relative to `data_root`, which defaults to the repository root and
+# can be changed with the SOCCER_DATA_ROOT environment variable (for example a
+# mounted volume on EC2 or SageMaker). `s3://bucket/prefix` URIs are accepted
+# wherever a storage location is read.
+#
+# Secrets never go in this file. The Dropbox token, shared-link URL and link
+# password come from environment variables or AWS SSM (see README).
+
+data_root: .
+
+# Which matches belong to the experiment and to which split. Relative to the
+# repository, not the data root.
+manifest: configs/games.csv
+excluded_matches: configs/excluded_matches.csv
+
+paths:
+  videos: data/videos
+  annotations: data/json/Soccer_Data_Json
+  frames: results_by_label_epl_2021_2022
+  features: features
+  results: clustering
+
+extraction:
+  # Seconds of video kept on each side of the commentary timestamp. Every game
+  # in one experiment must use the same window (see docs/leak_audit.md, B4).
+  before_sec: 30
+  after_sec: 30
+  sample_every_sec: 1
+  image_format: jpg
+  jpeg_quality: 90
+  write_clips: false
+
+features:
+  model: facebook/dinov2-base
+  max_frames: 60
+  batch_size: 32
+
+labels:
+  # Dropped before clustering and classification. Junk: scraper artefacts and
+  # empty labels. Non-visual: broadcast graphics with no on-pitch event.
+  junk: [unknown, wcl-icon-settings-info-rounded]
+  non_visual: [statistics_and_summary, show_added_time]
+
+seed: 42
