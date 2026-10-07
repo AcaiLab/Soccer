@@ -27,3 +27,25 @@ Nothing removed. Added ignore rules for credentials (`.env`, `*.pem`, `*.key`, `
 | `extract_remaining.py` | 5.3 KB | code | One-off rerun of frame extraction for games 34–40, duplicating `batch_pipeline.py`. No script references it. | high | yes, in git history |
 
 Kept after review: `clip_feature_extraction.py`. Its outputs (`features/clip_features.npy`, `features/metadata.csv`) are the default inputs of `cluster_analysis.py`, which produces the CLIP baseline.
+
+### Commit 3: remove duplicate result files
+
+Each file was checked with `git hash-object` immediately before removal and is byte-identical to the copy that was kept.
+
+| path | size | type | reason | confidence | recoverable? |
+|---|---|---|---|---|---|
+| `clustering/classification/multimodal_results.csv` | 0.6 KB | duplicate | Identical to `clustering/classification_30games/multimodal_results.csv`, the copy the course cites | high | yes, in git history |
+| `clustering/classification/multimodal_classification_report.txt` | 2.1 KB | duplicate | Identical to the copy in `clustering/classification_30games/` | high | yes, in git history |
+| `clustering/classification/multimodal_comparison.png` | 70.6 KB | duplicate | Identical to the copy in `clustering/classification_30games/` | high | yes, in git history |
+| `clustering/classification/temporal_classification_results.csv` | 0.7 KB | duplicate | Identical to the copy in `clustering/classification_full_dataset/` | high | yes, in git history |
+| `clustering/classification/temporal_classification_report.txt` | 2.2 KB | duplicate | Identical to the copy in `clustering/classification_full_dataset/` | high | yes, in git history |
+| `clustering/classification/temporal_feature_comparison.png` | 66.4 KB | duplicate | Identical to the copy in `clustering/classification_full_dataset/` | high | yes, in git history |
+| `clustering/classification/feature_importance.png` | 56.3 KB | duplicate | Identical to the copy in `clustering/classification_full_dataset/` | high | yes, in git history |
+
+Note: by default the classifier scripts still write to `clustering/classification/`, so rerunning them will recreate these files there.
+
+### Phase 2 totals
+
+| files removed | size removed | tracked files remaining |
+|---|---|---|
+| 10 | about 0.22 MB | 113 (122 at the start, minus 10 removed, plus `docs/cleanup_log.md`) |
