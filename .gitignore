@@ -40,3 +40,30 @@ Thumbs.db
 # ── Temp files from processing scripts ──────────────────────────────────────
 temp_extract.py
 temp_extract_*.py
+
+# ── Credentials (never commit) ──────────────────────────────────────────────
+.env
+.env.*
+*.pem
+*.key
+.aws/
+token.txt
+
+# ── Raw media ───────────────────────────────────────────────────────────────
+*.mkv
+*.mp4
+
+# ── Model weights and arrays ────────────────────────────────────────────────
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.npy
+*.npz
+*.pkl
+
+# ── Experiment tracking output ──────────────────────────────────────────────
+wandb/
+mlruns/
+runs/
+lightning_logs/
