@@ -49,3 +49,11 @@ Note: by default the classifier scripts still write to `clustering/classificatio
 | files removed | size removed | tracked files remaining |
 |---|---|---|
 | 10 | about 0.22 MB | 113 (122 at the start, minus 10 removed, plus `docs/cleanup_log.md`) |
+
+## Phase 3: leak audit (2026-10-07)
+
+Nothing removed or moved. Findings are in `docs/leak_audit.md`. Code change: `preprocess/extract_clips_frames_label.py` now extracts only the events of the half the video holds (commit `1f19f8a`).
+
+| files removed | size removed | tracked files remaining |
+|---|---|---|
+| 0 | 0 | 114 |
