@@ -165,7 +165,9 @@ def main(argv=None):
           f"({len(train_idx)} events){'; missing from features: ' + ' '.join(missing) if missing else ''}")
 
     dataset = TripletDataset(feat, tf.labels, tf.games, train_idx)
+    # BatchNorm cannot train on a batch of one, so drop a final batch of exactly one anchor.
     loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True,
+                        drop_last=len(dataset) % args.batch_size == 1,
                         generator=torch.Generator().manual_seed(args.seed))
     print(f"Anchors (labels present in 2+ training games): {len(dataset)}")
 

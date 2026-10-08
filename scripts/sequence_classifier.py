@@ -138,10 +138,9 @@ def main(argv=None):
     feats = ((tf.features - mu) / sd) * masks[:, :, None]  # keep padding at zero
     X, M, Y = torch.tensor(feats), torch.tensor(masks), torch.tensor(y, dtype=torch.long)
 
-    def loader(mask, shuffle, seed=0):
+    def loader(mask, shuffle, generator=None):
         ds = torch.utils.data.TensorDataset(X[mask & keep], M[mask & keep], Y[mask & keep])
-        return torch.utils.data.DataLoader(ds, batch_size=args.batch_size, shuffle=shuffle,
-                                           generator=torch.Generator().manual_seed(seed))
+        return torch.utils.data.DataLoader(ds, batch_size=args.batch_size, shuffle=shuffle, generator=generator)
 
     def predict(model, mask):
         model.eval()
@@ -156,10 +155,12 @@ def main(argv=None):
         opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
         crit = nn.CrossEntropyLoss()
         best_val, best_state, wait, stopped = -1.0, None, 0, 0
+        # One generator per run, so each epoch gets a new (but reproducible) order.
+        order = torch.Generator().manual_seed(seed)
         for epoch in range(1, args.epochs + 1):
             stopped = epoch
             model.train()
-            for xb, mb, yb in loader(split.train, True, seed):
+            for xb, mb, yb in loader(split.train, True, order):
                 opt.zero_grad()
                 crit(model(xb.to(device), mb.to(device)), yb.to(device)).backward()
                 opt.step()

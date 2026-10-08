@@ -73,14 +73,18 @@ def main(argv=None):
     gf = pd.read_csv(args.game_flow_features, keep_default_na=False)
     for c in CATEGORICAL:
         gf[c] = gf[c].astype(str)
-    gf_index = {(r.match_id, int(r.half), round(float(r.minute), 2)): i for i, r in enumerate(gf.itertuples())}
+    # The label is part of the key: different events often share a minute
+    # (e.g. corner and lead_to_corner), and keying on time alone dropped one of them.
+    gf_index = {}
+    for i, r in enumerate(gf.itertuples()):
+        gf_index.setdefault((r.match_id, int(r.half), round(float(r.minute), 2), r.label), i)
 
     pairs = []
     for i in range(len(tf)):
         half = int(tf.halves[i])
-        key = (match_of.get(tf.games[i]), half, match_minute(tag_to_seconds(tf.event_tags[i]), half))
+        key = (match_of.get(tf.games[i]), half, match_minute(tag_to_seconds(tf.event_tags[i]), half), tf.labels[i])
         j = gf_index.get(key)
-        if j is not None and gf.at[j, "label"] == tf.labels[i]:
+        if j is not None:
             pairs.append((i, j))
     if not pairs:
         raise SystemExit("No events matched between the visual and annotation features")
