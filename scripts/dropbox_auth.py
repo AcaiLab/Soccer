@@ -86,7 +86,8 @@ def exchange_code(app_key: str, code: str, verifier: str, session=None) -> dict:
         "code_verifier": verifier, "client_id": app_key})
     if r.status_code != 200:
         raise SystemExit(f"Dropbox refused the code (HTTP {r.status_code} {oauth_error(r)}). A code works "
-                         f"once and expires within minutes: run 'start' again for a fresh link.")
+                         f"once and expires within minutes: run 'start' again for a fresh link, and check "
+                         f"that the app key is the one in the Dropbox App Console.")
     body = r.json()
     if not body.get("refresh_token"):
         raise SystemExit("Dropbox sent no refresh token: authorise with the link that 'start' prints "
