@@ -15,7 +15,7 @@ already corrected for chance, purity is not.
 
 Junk and non-visual labels (configs/pipeline.yaml) are dropped first.
 
-Outputs (in --out-dir, default clustering/<model name>)
+Outputs (in --out-dir, default results/<model name>)
 --------------------------------------------------------
   A_individual_frames.png, B_event_meanpool.png, C_event_concat_pca.png,
   D_colorings_game_half.png, F_normalized_event_meanpool.png,
@@ -142,7 +142,7 @@ def main(argv=None):
     parser.add_argument("--features-dir", default=None, help="default: features/temporal_<model name>")
     parser.add_argument("--flat-features", default=None, help="default: features/<model name>_flat/<model name>_features.npy")
     parser.add_argument("--flat-meta", default=None, help="default: metadata.csv next to --flat-features")
-    parser.add_argument("--out-dir", default=None, help="default: clustering/<model name>")
+    parser.add_argument("--out-dir", default=None, help="default: results/<model name>")
     parser.add_argument("--keep-all-labels", action="store_true", help="do not drop junk / non-visual labels")
     args = parser.parse_args(argv)
 

@@ -113,3 +113,9 @@ Approved by Hasset Admasu on 2026-10-07 ("make all the changes").
 | `clip_feature_extraction.py` | 0.7 KB | code | forwarder; `extract_frame_features.py --model openai/clip-vit-base-patch32` replaces it | high | yes, in git history |
 | `fast_batch_pipeline.py` | 4.6 KB | code | duplicates `batch_pipeline.py`; its queue file is replaced by `configs/games.csv` | medium | yes, in git history |
 | `soccerProjNewCode-1.py` | 9.0 KB | code | superseded by `soccer/extract.py`; hyphenated name not importable | medium | yes, in git history and on `main` |
+
+### Commit: move pre-fix results to an archive
+
+| from | to | size | reason |
+|---|---|---|---|
+| `clustering/` (77 files) | `results/archive_pre_fix/` | 15 MB | pre-fix results, several invalid (leak audit B1-B5); kept because the write-up cites them. New runs write to `results/<name>/`, which is gitignored; the archive stays tracked and has a README naming what is invalid. |

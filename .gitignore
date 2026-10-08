@@ -74,3 +74,7 @@ build/
 dist/
 .pytest_cache/
 .ruff_cache/
+
+# ── Run outputs (regenerate with run_dino_pipeline.py); the pre-fix archive stays tracked
+/results/*
+!/results/archive_pre_fix/

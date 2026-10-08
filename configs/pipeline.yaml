@@ -21,7 +21,7 @@ paths:
   annotations: data/json/Soccer_Data_Json
   frames: results_by_label_epl_2021_2022
   features: features
-  results: clustering
+  results: results
 
 extraction:
   # Seconds of video kept on each side of the commentary timestamp. Every game
