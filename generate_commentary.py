@@ -19,25 +19,9 @@ Usage:
 
 import argparse
 import json
-import os
 import random
 import re
-from collections import defaultdict
 from pathlib import Path
-
-random.seed(42)
-
-parser = argparse.ArgumentParser()
-parser.add_argument("--shard", required=True, help="Path to shard directory")
-parser.add_argument("--json-dir", default="data/json/Soccer_Data_Json",
-                    help="Root of raw JSON annotations")
-parser.add_argument("--out", default=None,
-                    help="Output JSONL path (default: <shard>/improved_commentary.jsonl)")
-args = parser.parse_args()
-
-shard_dir = Path(args.shard)
-json_dir = Path(args.json_dir)
-out_path = Path(args.out) if args.out else shard_dir / "improved_commentary.jsonl"
 
 # ---------------------------------------------------------------------------
 # FACT DICTIONARIES — one per event type, covering ALL 26 labels
@@ -307,7 +291,7 @@ LOW_VISION_CLOSERS = [
 # ---------------------------------------------------------------------------
 # Entity resolution — load match data from raw JSON
 # ---------------------------------------------------------------------------
-def find_raw_json(game_label: str) -> dict | None:
+def find_raw_json(json_dir: Path, game_label: str) -> dict | None:
     """Find and load the raw JSON for a game from the local dataset."""
     # game_label format: "2017-10-21_manchester-city-burnley-fc-premier-league"
     # Try each split and league
@@ -435,13 +419,23 @@ def format_label(label: str) -> str:
 # ---------------------------------------------------------------------------
 # Commentary generation
 # ---------------------------------------------------------------------------
+def opening(templates: list[str], event: str) -> str:
+    """Fill an opener template; only the sentence's first letter is capitalised.
+
+    Capitalising the event itself put capitals mid-sentence
+    ("At this point, The attacking team ...").
+    """
+    text = random.choice(templates).format(event=event)
+    return text[0].upper() + text[1:]
+
+
 def generate_beginner(facts: dict) -> str:
     event = facts["plain_event"]
     # Fix a/an
     if event.startswith("a ") and event[2:3] in "aeiou":
         event = "an " + event[2:]
 
-    opener = random.choice(BEGINNER_OPENERS).format(event=event.capitalize() if not event[0].isupper() else event)
+    opener = opening(BEGINNER_OPENERS, event)
     bridge = random.choice(BEGINNER_BRIDGES).format(context=facts["rule_context"])
     closer = random.choice(BEGINNER_CLOSERS).format(next=facts["next_state"])
     return f"{opener} {bridge} {closer}"
@@ -452,7 +446,7 @@ def generate_expert(facts: dict) -> str:
     if event.startswith("a ") and event[2:3] in "aeiou":
         event = "an " + event[2:]
 
-    opener = random.choice(EXPERT_OPENERS).format(event=event.capitalize() if not event[0].isupper() else event)
+    opener = opening(EXPERT_OPENERS, event)
     bridge = random.choice(EXPERT_BRIDGES).format(context=facts["tactical_context"])
     closer = random.choice(EXPERT_CLOSERS).format(next=facts["next_state"])
 
@@ -467,7 +461,7 @@ def generate_low_vision(facts: dict, visual_cues: dict | None) -> str:
     if event.startswith("a ") and event[2:3] in "aeiou":
         event = "an " + event[2:]
 
-    opener = random.choice(LOW_VISION_OPENERS).format(event=event.capitalize() if not event[0].isupper() else event)
+    opener = opening(LOW_VISION_OPENERS, event)
 
     # Use actual visual cues if available, otherwise use facts
     if visual_cues:
@@ -492,151 +486,167 @@ def generate_low_vision(facts: dict, visual_cues: dict | None) -> str:
 # ---------------------------------------------------------------------------
 # Main pipeline
 # ---------------------------------------------------------------------------
-# ---------------------------------------------------------------------------
-# Main pipeline
-# ---------------------------------------------------------------------------
-print(f"Shard:    {shard_dir}")
-print(f"JSON dir: {json_dir}")
-print(f"Output:   {out_path}")
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Generate audience-adaptive commentary for one shard.")
+    parser.add_argument("--shard", required=True, help="Path to shard directory")
+    parser.add_argument("--json-dir", default="data/json/Soccer_Data_Json",
+                        help="Root of raw JSON annotations")
+    parser.add_argument("--out", default=None,
+                        help="Output JSONL path (default: <shard>/improved_commentary.jsonl)")
+    parser.add_argument("--seed", type=int, default=42)
+    args = parser.parse_args(argv)
 
-# Load windows
-windows_path = shard_dir / "windows.jsonl"
-if not windows_path.exists():
-    print(f"ERROR: {windows_path} not found")
-    raise SystemExit(1)
+    random.seed(args.seed)
+    shard_dir = Path(args.shard)
+    json_dir = Path(args.json_dir)
+    out_path = Path(args.out) if args.out else shard_dir / "improved_commentary.jsonl"
 
-windows = []
-with open(windows_path) as f:
-    for line in f:
-        windows.append(json.loads(line))
-print(f"Windows:  {len(windows)}")
+    print(f"Shard:    {shard_dir}")
+    print(f"JSON dir: {json_dir}")
+    print(f"Output:   {out_path}")
 
-# Load visual cues
-visual_cues = {}
-cues_path = shard_dir / "basic_visual_cues.jsonl"
-if cues_path.exists():
-    with open(cues_path) as f:
+    # Load windows
+    windows_path = shard_dir / "windows.jsonl"
+    if not windows_path.exists():
+        print(f"ERROR: {windows_path} not found")
+        raise SystemExit(1)
+
+    windows = []
+    with open(windows_path) as f:
         for line in f:
-            rec = json.loads(line)
-            visual_cues[rec["window_id"]] = rec.get("visual_facts", {})
-    print(f"Visual cues: {len(visual_cues)}")
+            windows.append(json.loads(line))
+    print(f"Windows:  {len(windows)}")
 
-# Cache raw JSON per game
-json_cache = {}
+    # Load visual cues
+    visual_cues = {}
+    cues_path = shard_dir / "basic_visual_cues.jsonl"
+    if cues_path.exists():
+        with open(cues_path) as f:
+            for line in f:
+                rec = json.loads(line)
+                visual_cues[rec["window_id"]] = rec.get("visual_facts", {})
+        print(f"Visual cues: {len(visual_cues)}")
+
+    # Cache raw JSON per game
+    json_cache = {}
 
 
-def get_raw_json(game_label):
-    if game_label not in json_cache:
-        json_cache[game_label] = find_raw_json(game_label)
-    return json_cache[game_label]
+    def get_raw_json(game_label):
+        if game_label not in json_cache:
+            json_cache[game_label] = find_raw_json(json_dir, game_label)
+        return json_cache[game_label]
 
 
-# Load original commentary for comparison
-original = {}
-orig_path = shard_dir / "natural_commentary_with_visual_facts.jsonl"
-if orig_path.exists():
-    with open(orig_path) as f:
-        for line in f:
-            rec = json.loads(line)
-            key = (rec["window_id"], rec["audience"])
-            original[key] = rec["commentary"]
-    print(f"Original commentary: {len(original)} records")
+    # Load original commentary for comparison
+    original = {}
+    orig_path = shard_dir / "natural_commentary_with_visual_facts.jsonl"
+    if orig_path.exists():
+        with open(orig_path) as f:
+            for line in f:
+                rec = json.loads(line)
+                key = (rec["window_id"], rec["audience"])
+                original[key] = rec["commentary"]
+        print(f"Original commentary: {len(original)} records")
 
-# Generate
-print(f"\nGenerating improved commentary...")
-records = []
-entity_hits = 0
-entity_misses = 0
+    # Generate
+    print("\nGenerating improved commentary...")
+    records = []
+    entity_hits = 0
+    entity_misses = 0
 
-for w in windows:
-    wid = w["window_id"]
-    game_label = w["game_label"]
-    event_label = w["event_label"]
-    half = w.get("half", 1)
-    timestamp = w.get("timestamp", "")
+    for w in windows:
+        wid = w["window_id"]
+        game_label = w["game_label"]
+        event_label = w["event_label"]
+        half = w.get("half", 1)
+        timestamp = w.get("timestamp", "")
 
-    # Get base facts
-    facts = EVENT_FACTS.get(event_label, EVENT_FACTS["unknown"]).copy()
+        # Get base facts
+        facts = EVENT_FACTS.get(event_label, EVENT_FACTS["unknown"]).copy()
 
-    # Try to enhance with entity detail
-    raw = get_raw_json(game_label)
-    if raw:
-        entities = build_entity_context(raw, event_label, timestamp, half)
-        facts = format_event_with_entities(facts, entities, event_label)
-        if entities.get("player"):
-            entity_hits += 1
+        # Try to enhance with entity detail
+        raw = get_raw_json(game_label)
+        if raw:
+            entities = build_entity_context(raw, event_label, timestamp, half)
+            facts = format_event_with_entities(facts, entities, event_label)
+            if entities.get("player"):
+                entity_hits += 1
+            else:
+                entity_misses += 1
         else:
+            entities = {}
             entity_misses += 1
-    else:
-        entities = {}
-        entity_misses += 1
 
-    # Get visual cues for this window
-    vcues = visual_cues.get(wid)
+        # Get visual cues for this window
+        vcues = visual_cues.get(wid)
 
-    for audience in ["beginner", "expert", "low_vision"]:
-        if audience == "beginner":
-            text = generate_beginner(facts)
-        elif audience == "expert":
-            text = generate_expert(facts)
-        else:
-            text = generate_low_vision(facts, vcues)
+        for audience in ["beginner", "expert", "low_vision"]:
+            if audience == "beginner":
+                text = generate_beginner(facts)
+            elif audience == "expert":
+                text = generate_expert(facts)
+            else:
+                text = generate_low_vision(facts, vcues)
 
-        orig_key = (wid, audience)
-        orig_text = original.get(orig_key, "")
+            orig_key = (wid, audience)
+            orig_text = original.get(orig_key, "")
 
-        records.append({
-            "window_id": wid,
-            "game_label": game_label,
-            "event_label": event_label,
-            "audience": audience,
-            "commentary": text,
-            "original_commentary": orig_text,
-            "has_entity_detail": bool(entities.get("player")),
-            "home_team": entities.get("home_team", ""),
-            "away_team": entities.get("away_team", ""),
-        })
+            records.append({
+                "window_id": wid,
+                "game_label": game_label,
+                "event_label": event_label,
+                "audience": audience,
+                "commentary": text,
+                "original_commentary": orig_text,
+                "has_entity_detail": bool(entities.get("player")),
+                "home_team": entities.get("home_team", ""),
+                "away_team": entities.get("away_team", ""),
+            })
 
-# Write output
-with open(out_path, "w", encoding="utf-8") as f:
-    for rec in records:
-        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    # Write output
+    with open(out_path, "w", encoding="utf-8") as f:
+        for rec in records:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
-# Stats
-n_windows = len(windows)
-n_records = len(records)
-unique_beginner = len(set(r["commentary"] for r in records if r["audience"] == "beginner"))
-unique_expert = len(set(r["commentary"] for r in records if r["audience"] == "expert"))
-unique_lv = len(set(r["commentary"] for r in records if r["audience"] == "low_vision"))
+    # Stats
+    n_windows = len(windows)
+    n_records = len(records)
+    unique_beginner = len(set(r["commentary"] for r in records if r["audience"] == "beginner"))
+    unique_expert = len(set(r["commentary"] for r in records if r["audience"] == "expert"))
+    unique_lv = len(set(r["commentary"] for r in records if r["audience"] == "low_vision"))
 
-print(f"\n{'='*60}")
-print(f"GENERATION COMPLETE")
-print(f"{'='*60}")
-print(f"Windows processed: {n_windows}")
-print(f"Records written:   {n_records}")
-print(f"Entity detail found: {entity_hits}/{n_windows} ({entity_hits/max(n_windows,1)*100:.1f}%)")
-print(f"Entity detail missing: {entity_misses}/{n_windows}")
-print(f"")
-print(f"Unique strings (IMPROVED):")
-print(f"  Beginner:   {unique_beginner}")
-print(f"  Expert:     {unique_expert}")
-print(f"  Low vision: {unique_lv}")
+    print(f"\n{'='*60}")
+    print("GENERATION COMPLETE")
+    print(f"{'='*60}")
+    print(f"Windows processed: {n_windows}")
+    print(f"Records written:   {n_records}")
+    print(f"Entity detail found: {entity_hits}/{n_windows} ({entity_hits/max(n_windows,1)*100:.1f}%)")
+    print(f"Entity detail missing: {entity_misses}/{n_windows}")
+    print("")
+    print("Unique strings (IMPROVED):")
+    print(f"  Beginner:   {unique_beginner}")
+    print(f"  Expert:     {unique_expert}")
+    print(f"  Low vision: {unique_lv}")
 
-# Compare with original if available
-if original:
-    orig_beg = len(set(v for (_, a), v in original.items() if a == "beginner"))
-    orig_exp = len(set(v for (_, a), v in original.items() if a == "expert"))
-    orig_lv = len(set(v for (_, a), v in original.items() if a == "low_vision"))
-    print(f"")
-    print(f"Unique strings (ORIGINAL):")
-    print(f"  Beginner:   {orig_beg}")
-    print(f"  Expert:     {orig_exp}")
-    print(f"  Low vision: {orig_lv}")
-    print(f"")
-    print(f"Improvement factor:")
-    print(f"  Beginner:   {unique_beginner/max(orig_beg,1):.1f}x more diverse")
-    print(f"  Expert:     {unique_expert/max(orig_exp,1):.1f}x more diverse")
-    print(f"  Low vision: {unique_lv/max(orig_lv,1):.1f}x more diverse")
+    # Compare with original if available
+    if original:
+        orig_beg = len(set(v for (_, a), v in original.items() if a == "beginner"))
+        orig_exp = len(set(v for (_, a), v in original.items() if a == "expert"))
+        orig_lv = len(set(v for (_, a), v in original.items() if a == "low_vision"))
+        print("")
+        print("Unique strings (ORIGINAL):")
+        print(f"  Beginner:   {orig_beg}")
+        print(f"  Expert:     {orig_exp}")
+        print(f"  Low vision: {orig_lv}")
+        print("")
+        print("Improvement factor:")
+        print(f"  Beginner:   {unique_beginner/max(orig_beg,1):.1f}x more diverse")
+        print(f"  Expert:     {unique_expert/max(orig_exp,1):.1f}x more diverse")
+        print(f"  Low vision: {unique_lv/max(orig_lv,1):.1f}x more diverse")
 
-print(f"\nOutput -> {out_path}")
-print("Done.")
+    print(f"\nOutput -> {out_path}")
+    print("Done.")
+
+
+if __name__ == "__main__":
+    main()
