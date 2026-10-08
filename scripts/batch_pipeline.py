@@ -1,9 +1,10 @@
 """
 Batch Pipeline: Download -> Extract Frames -> Delete Video
 ==========================================================
-For every game in the manifest (configs/games.csv): download both halves
-from the SoccerReplay-1988 Dropbox link, extract event-centred frames from
-each half, then delete the video to free disk.
+For every game in the manifest (configs/games.csv): get both halves (from
+the SoccerReplay-1988 Dropbox link, from the S3 copy made by
+transfer_dropbox_to_s3.py, or from local disk), extract event-centred frames
+from each half, then delete the video to free disk.
 
 Resumable: a half is skipped once its extraction marker exists, and an
 interrupted half is redone. Feature extraction is a separate GPU step
@@ -17,17 +18,24 @@ Usage:
     python scripts/batch_pipeline.py --games 01 02 25      # selected games
     python scripts/batch_pipeline.py --keep-videos         # keep the .mkv files
     python scripts/batch_pipeline.py --local-only          # use videos already in data/videos
+    python scripts/batch_pipeline.py --from-s3             # use the S3 copy (<s3_root>/videos)
 """
 
 import argparse
 import shutil
 import sys
 
-from soccer.config import data_path, load_config, repo_path
+from soccer.config import data_path, load_config, repo_path, s3_uri
 from soccer.dropbox import DropboxSharedLink, TokenExpired
 from soccer.extract import ExtractionSettings
 from soccer.manifest import load_manifest, normalize_game_id
-from soccer.pipeline import annotation_for, download_videos, extract_game, is_extracted
+from soccer.pipeline import (
+    annotation_for,
+    download_videos,
+    extract_game,
+    fetch_videos_from_s3,
+    is_extracted,
+)
 
 
 def main(argv=None):
@@ -38,6 +46,8 @@ def main(argv=None):
     parser.add_argument("--keep-videos", action="store_true", help="do not delete videos after extraction")
     parser.add_argument("--local-only", action="store_true",
                         help="no download: extract from videos already in the videos folder (implies --keep-videos)")
+    parser.add_argument("--from-s3", nargs="?", const="", default=None, metavar="URI",
+                        help="read videos from S3 (default URI: <s3_root>/videos) instead of Dropbox")
     parser.add_argument("--token-file", default="tmp_dbx/token.txt",
                         help="Dropbox token file, used if DROPBOX_TOKEN is not set")
     args = parser.parse_args(argv)
@@ -59,14 +69,22 @@ def main(argv=None):
     if not todo:
         return
 
-    client = None if args.local_only else DropboxSharedLink.from_env(token_file=args.token_file)
+    if args.local_only and args.from_s3 is not None:
+        parser.error("--local-only and --from-s3 are alternatives")
+    videos_uri = (args.from_s3 or s3_uri(cfg, "videos")) if args.from_s3 is not None else None
+    use_dropbox = not args.local_only and videos_uri is None
+    client = DropboxSharedLink.from_env(token_file=args.token_file) if use_dropbox else None
     failed = []
     for i, game in enumerate(todo, 1):
         print(f"[{i}/{len(todo)}] game_{game.game_num}: {game.league}/{game.match_id}", flush=True)
         try:
             annotation = annotation_for(annotations_root, game)
-            video_dir = (videos_root / game.match_id if args.local_only
-                         else download_videos(client, game, videos_root))
+            if args.local_only:
+                video_dir = videos_root / game.match_id
+            elif videos_uri:
+                video_dir = fetch_videos_from_s3(videos_uri, game, videos_root)
+            else:
+                video_dir = download_videos(client, game, videos_root)
             extract_game(game, video_dir, annotation, frames_root, settings)
         except TokenExpired as e:
             print(f"\n*** {e}. Set a new token and rerun; finished games are kept. ***")

@@ -16,6 +16,21 @@ data_root: .
 manifest: configs/games.csv
 excluded_matches: configs/excluded_matches.csv
 
+# Remote staging in S3 (set here or with SOCCER_S3_ROOT, e.g. s3://my-bucket):
+#   <s3_root>/videos/<league>/<match_id>/*.mkv   copied from Dropbox
+#   <s3_root>/json/                              annotation JSONs
+#   <s3_root>/features/, <s3_root>/results/      pipeline outputs
+s3_root: null
+
+# Where the annotation JSONs can be downloaded (no credentials needed for the
+# Google Drive copy; the Hugging Face repo is gated and needs HF_TOKEN).
+annotations_source:
+  google_drive_files:
+    train: 1xIHbuGBDGvNZ6bDGzKsWs6RGXoKR4YXp
+    valid: 1iNVSNV9ftZ-N6aE9WENoxZBabx7jIBsW
+    test: 1drO29-jvYl6xJutWzj7F4E_DyD6cn0Qj
+  huggingface_repo: Homie0609/SoccerReplay-1988
+
 paths:
   videos: data/videos
   annotations: data/json/Soccer_Data_Json

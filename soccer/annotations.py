@@ -10,10 +10,14 @@ from __future__ import annotations
 import json
 import pathlib
 import re
+import shutil
+import tempfile
+import zipfile
 from dataclasses import dataclass
 
 TIMESTAMP_RE = re.compile(r"(\d+)(?:\+(\d+))?:(\d{2})")
 SPLITS = ("train", "valid", "test")
+LEAGUE_DIR_RE = re.compile(r"^[a-z]+_[a-z0-9-]+_\d{4}-\d{4}$")  # e.g. england_epl_2021-2022
 
 
 @dataclass(frozen=True)
@@ -110,3 +114,24 @@ def detect_half(video_path: str | pathlib.Path) -> int:
     if not m:
         raise ValueError(f"Cannot tell which half {str(video_path)!r} holds; pass the half explicitly")
     return int(m.group(1))
+
+
+def install_split_zip(zip_path: str | pathlib.Path, split: str, annotations_root: str | pathlib.Path) -> int:
+    """Unpack a SoccerReplay split zip into <root>/<split>/<league>/<match>/*.json.
+
+    The league folders are located wherever they sit inside the archive, so a
+    zip with or without a top-level "train/" folder installs the same way.
+    Returns the number of JSON files installed.
+    """
+    if split not in SPLITS:
+        raise ValueError(f"unknown split {split!r}")
+    dest = pathlib.Path(annotations_root) / split
+    with tempfile.TemporaryDirectory() as tmp:
+        with zipfile.ZipFile(zip_path) as z:
+            z.extractall(tmp)
+        leagues = [d for d in pathlib.Path(tmp).rglob("*") if d.is_dir() and LEAGUE_DIR_RE.match(d.name)]
+        if not leagues:
+            raise ValueError(f"{zip_path}: no league folders (like england_epl_2021-2022) inside")
+        for league in leagues:
+            shutil.copytree(league, dest / league.name, dirs_exist_ok=True)
+    return sum(1 for _ in dest.glob("*/*/*.json"))

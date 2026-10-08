@@ -10,6 +10,7 @@ from soccer.annotations import events_for_half, find_annotation_file, load_comme
 from soccer.dropbox import DropboxSharedLink
 from soccer.extract import ExtractionSettings, extract_events
 from soccer.manifest import Game
+from soccer.storage import download_prefix
 
 DONE_MARKER = "extraction.json"
 
@@ -45,6 +46,16 @@ def download_videos(client: DropboxSharedLink, game: Game, videos_root: pathlib.
     for e in mkvs:
         n = client.download(f"/{game.league}/{game.match_id}/{e['name']}", out / e["name"], e["size"])
         print(f"    {e['name']}  {'already present' if n == 0 else f'{n / 1e9:.2f} GB'}", flush=True)
+    return out
+
+
+def fetch_videos_from_s3(videos_uri: str, game: Game, videos_root: pathlib.Path) -> pathlib.Path:
+    """Copy <videos_uri>/<league>/<match_id>/ (as written by the Dropbox transfer) to local disk."""
+    out = videos_root / game.match_id
+    n = download_prefix(f"{videos_uri.rstrip('/')}/{game.league}/{game.match_id}/", out)
+    if n == 0:
+        raise FileNotFoundError(f"No videos at {videos_uri}/{game.league}/{game.match_id}/")
+    print(f"    fetched {n} files from S3", flush=True)
     return out
 
 

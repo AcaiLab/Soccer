@@ -91,25 +91,32 @@ class DropboxSharedLink:
             entries += data["entries"]
         return entries
 
+    def open_file(self, remote_path: str) -> requests.Response:
+        """Streaming response for a file inside the shared link; use as a context manager."""
+        arg = {"url": self._link["url"], "path": remote_path}
+        if "password" in self._link:
+            arg["link_password"] = self._link["password"]
+        r = self._session.post(f"{CONTENT}/sharing/get_shared_link_file", stream=True, timeout=120,
+                               headers={"Authorization": f"Bearer {self._token}",
+                                        "Dropbox-API-Arg": json.dumps(arg)})
+        try:
+            self._check(r)
+        except Exception:
+            r.close()
+            raise
+        return r
+
     def download(self, remote_path: str, local_path: str | os.PathLike,
                  expected_size: int | None = None, retries: int = 3) -> int:
         """Download to local_path via a .part file; returns bytes written."""
         local_path = pathlib.Path(local_path)
-        if expected_size is not None and local_path.is_file() \
-                and local_path.stat().st_size == expected_size:
+        if expected_size is not None and local_path.is_file()                 and local_path.stat().st_size == expected_size:
             return 0
         local_path.parent.mkdir(parents=True, exist_ok=True)
         tmp = local_path.with_suffix(local_path.suffix + ".part")
-        arg = {"url": self._link["url"], "path": remote_path}
-        if "password" in self._link:
-            arg["link_password"] = self._link["password"]
         for attempt in range(1, retries + 1):
             try:
-                with self._session.post(
-                        f"{CONTENT}/sharing/get_shared_link_file", stream=True, timeout=120,
-                        headers={"Authorization": f"Bearer {self._token}",
-                                 "Dropbox-API-Arg": json.dumps(arg)}) as r:
-                    self._check(r)
+                with self.open_file(remote_path) as r:
                     written = 0
                     with open(tmp, "wb") as f:
                         for chunk in r.iter_content(chunk_size=1 << 20):

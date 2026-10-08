@@ -66,3 +66,14 @@ def local_file(uri: str | pathlib.Path, cache_dir: str | pathlib.Path) -> pathli
         dest.parent.mkdir(parents=True, exist_ok=True)
         _client().download_file(bucket, key, str(dest))
     return dest
+
+
+def upload_dir(local_dir: str | pathlib.Path, uri: str) -> int:
+    """Upload every file under local_dir to the S3 prefix; returns file count."""
+    bucket, prefix = split_s3(uri.rstrip("/") + "/")
+    local_dir = pathlib.Path(local_dir)
+    s3, n = _client(), 0
+    for path in sorted(p for p in local_dir.rglob("*") if p.is_file()):
+        s3.upload_file(str(path), bucket, prefix + path.relative_to(local_dir).as_posix())
+        n += 1
+    return n

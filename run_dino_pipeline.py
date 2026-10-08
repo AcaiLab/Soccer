@@ -21,6 +21,7 @@ Usage:
     python run_dino_pipeline.py --stages features cluster        # a subset
     python run_dino_pipeline.py --stages frames --local-only     # extract from local videos
     python run_dino_pipeline.py --model facebook/dinov2-large --device cuda
+    python run_dino_pipeline.py --from-s3 --upload               # GPU server: S3 in, S3 out
 """
 
 import argparse
@@ -28,7 +29,8 @@ import subprocess
 import sys
 from datetime import datetime
 
-from soccer.config import REPO_ROOT, data_path, load_config
+from soccer.config import REPO_ROOT, data_path, load_config, s3_uri
+from soccer.storage import upload_dir
 
 STAGES = ["frames", "features", "cluster", "contrastive", "classify"]
 
@@ -55,6 +57,9 @@ def main(argv=None):
     parser.add_argument("--batch-size", type=int, default=cfg["features"]["batch_size"])
     parser.add_argument("--games", nargs="+", default=None, help="frames stage: only these game numbers")
     parser.add_argument("--local-only", action="store_true", help="frames stage: use videos already on disk")
+    parser.add_argument("--from-s3", action="store_true", help="frames stage: read videos from <s3_root>/videos")
+    parser.add_argument("--upload", action="store_true",
+                        help="after the stages, copy features/ and results/ to <s3_root>/features, /results")
     parser.add_argument("--skip-flat", action="store_true", help="features stage: skip per-frame features")
     args = parser.parse_args(argv)
 
@@ -64,7 +69,7 @@ def main(argv=None):
 
     if "frames" in args.stages:
         run("batch_pipeline.py", *(["--games", *args.games] if args.games else []),
-            *(["--local-only"] if args.local_only else []))
+            *(["--local-only"] if args.local_only else []), *(["--from-s3"] if args.from_s3 else []))
     if "features" in args.stages:
         run("temporal_clip_features.py", "--model", args.model, "--batch-size", args.batch_size, *device)
         if not args.skip_flat:
@@ -84,6 +89,10 @@ def main(argv=None):
             run("multimodal_classification.py")
         else:
             log("No annotation folder; skipping annotation-only and multimodal classification")
+    if args.upload:
+        for sub in ("features", "results"):
+            n = upload_dir(data_path(cfg, sub), s3_uri(cfg, sub))
+            log(f"Uploaded {n} files to {s3_uri(cfg, sub)}")
     log("Pipeline complete")
 
 

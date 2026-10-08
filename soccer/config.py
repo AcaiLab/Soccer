@@ -42,3 +42,13 @@ def dropped_labels(cfg: dict) -> set[str]:
     """Labels removed before clustering and classification."""
     labels = cfg.get("labels", {})
     return set(labels.get("junk", [])) | set(labels.get("non_visual", []))
+
+
+def s3_uri(cfg: dict, sub: str) -> str:
+    """<s3_root>/<sub>, with s3_root from $SOCCER_S3_ROOT or the config file."""
+    root = os.environ.get("SOCCER_S3_ROOT") or cfg.get("s3_root")
+    if not root:
+        raise RuntimeError("No S3 location: set s3_root in configs/pipeline.yaml or SOCCER_S3_ROOT")
+    if not str(root).startswith("s3://"):
+        raise ValueError(f"s3_root must look like s3://bucket[/prefix], got {root!r}")
+    return f"{str(root).rstrip('/')}/{sub.strip('/')}"
