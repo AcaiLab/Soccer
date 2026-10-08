@@ -16,13 +16,16 @@ def load_config(path: str | os.PathLike | None = None) -> dict:
 
     The file is `path`, else $SOCCER_CONFIG, else configs/pipeline.yaml. The data
     root is $SOCCER_DATA_ROOT if set, else `data_root` from the file; a relative
-    data root is taken relative to the repository.
+    data root is taken relative to the repository. $SOCCER_MANIFEST replaces the
+    games manifest (for alternative splits).
     """
     path = pathlib.Path(path or os.environ.get("SOCCER_CONFIG") or DEFAULT_CONFIG)
     with open(path, encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
     root = pathlib.Path(os.environ.get("SOCCER_DATA_ROOT") or cfg.get("data_root", "."))
     cfg["data_root"] = root if root.is_absolute() else (REPO_ROOT / root).resolve()
+    if os.environ.get("SOCCER_MANIFEST"):  # e.g. configs/games_venue_split.csv
+        cfg["manifest"] = os.environ["SOCCER_MANIFEST"]
     return cfg
 
 
