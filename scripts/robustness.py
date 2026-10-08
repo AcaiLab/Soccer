@@ -15,6 +15,9 @@ Usage:
     python scripts/make_venue_split.py
     python scripts/robustness.py --device cuda
     python scripts/robustness.py --seeds 42 43 44 --splits default
+    python scripts/robustness.py --device cpu       # leave a busy shared GPU alone
+
+Resumable: a step whose output file exists is skipped.
 """
 
 import argparse
@@ -36,6 +39,18 @@ def run(script, args, manifest):
     cmd = [sys.executable, str(REPO_ROOT / "scripts" / script), *map(str, args)]
     print("$ SOCCER_MANIFEST=" + manifest + " scripts/" + script + " " + " ".join(map(str, args)), flush=True)
     subprocess.run(cmd, check=True, env={**os.environ, "SOCCER_MANIFEST": manifest})
+
+
+def step(script, args, manifest, done: pathlib.Path):
+    """run() unless `done` exists, so an interrupted run resumes where it stopped.
+
+    Note: sequence results cover the seeds of the run that produced them; delete
+    the folder to rerun with different seeds.
+    """
+    if done.is_file():
+        print(f"skip scripts/{script} ({done} exists)", flush=True)
+        return
+    run(script, args, manifest)
 
 
 def read_test_summary(path: pathlib.Path) -> dict:
@@ -76,25 +91,28 @@ def main(argv=None):
         out = root / split
         for seed in args.seeds:
             head = features / f"contrastive_{split}_s{seed}"
-            run("contrastive_training.py", ["--seed", seed, "--out-dir", head, *device], manifest)
-            run("evaluate_contrastive.py", ["--contrastive-features", head, "--out-dir", out / f"contrastive_s{seed}"],
-                manifest)
+            step("contrastive_training.py", ["--seed", seed, "--out-dir", head, *device], manifest,
+                 head / "contrastive_embeddings.npz")
+            step("evaluate_contrastive.py", ["--contrastive-features", head, "--out-dir", out / f"contrastive_s{seed}"],
+                 manifest, out / f"contrastive_s{seed}" / "contrastive_metrics.csv")
             m = pd.read_csv(out / f"contrastive_s{seed}" / "contrastive_metrics.csv")
             for _, r in m.iterrows():
                 tag = ("heldout" if r["Group"].startswith("held") else "train") + "_" + \
                       ("before" if "before" in r["Representation"] else "after")
                 rows.append({"split": split, "seed": seed, "metric": f"contrastive_{tag}_ARI", "value": r["ARI"]})
                 rows.append({"split": split, "seed": seed, "metric": f"contrastive_{tag}_purity", "value": r["Purity"]})
-            run("event_classification.py", ["--contrastive-features", head, "--out-dir", out / f"pooled_s{seed}"],
-                manifest)
+            step("event_classification.py", ["--contrastive-features", head, "--out-dir", out / f"pooled_s{seed}"],
+                 manifest, out / f"pooled_s{seed}" / "classification_report.txt")
             s = read_test_summary(out / f"pooled_s{seed}" / "classification_report.txt")
             rows += [{"split": split, "seed": seed, "metric": f"pooled_{k}", "value": s[k]}
                      for k in ("accuracy", "macro_f1", "majority") if k in s]
-        run("sequence_classifier.py", ["--seeds", *args.seeds, "--out-dir", out / "sequence", *device], manifest)
+        step("sequence_classifier.py", ["--seeds", *args.seeds, "--out-dir", out / "sequence", *device], manifest,
+             out / "sequence" / "sequence_test_by_seed.csv")
         for _, r in pd.read_csv(out / "sequence" / "sequence_test_by_seed.csv").iterrows():
             rows.append({"split": split, "seed": int(r["seed"]), "metric": "sequence_accuracy", "value": r["Accuracy"]})
             rows.append({"split": split, "seed": int(r["seed"]), "metric": "sequence_macro_f1", "value": r["Macro_F1"]})
-        run("multimodal_classification.py", ["--out-dir", out / "multimodal"], manifest)
+        step("multimodal_classification.py", ["--out-dir", out / "multimodal"], manifest,
+             out / "multimodal" / "multimodal_classification_report.txt")
         s = read_test_summary(out / "multimodal" / "multimodal_classification_report.txt")
         rows += [{"split": split, "seed": cfg["seed"], "metric": f"multimodal_{k}", "value": s[k]}
                  for k in ("accuracy", "macro_f1") if k in s]
