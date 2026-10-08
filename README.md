@@ -67,11 +67,19 @@ python run_dino_pipeline.py --stages frames --local-only # extract from videos a
 
 The stage scripts live in `scripts/` and also run on their own; `python scripts/<name>.py --help` lists their options. Reported numbers always come with their baseline: purity with its shuffled-cluster purity, accuracy with macro-F1 and the majority-class accuracy.
 
-### On AWS
+### Where it runs
 
-- **GPU stages** (`features`, `contrastive`, sequence models) run on an EC2 GPU instance bootstrapped by `infra/ec2-setup.sh`. It needs `SOCCER_BUCKET` set and an instance role with S3 read/write on that bucket and SSM read on the Dropbox parameters. The same container or commands fit SageMaker or AWS Batch jobs.
-- **CPU stages** (`frames`, `cluster`, `classify`) run anywhere: a laptop, a CPU instance, or Batch/ECS. `frames` downloads about 1.2 GB per match and keeps one match on disk at a time.
-- **Lightweight data preparation**, such as producing the train/test split manifest from data in S3, is planned as an AWS Lambda function under `infra/` (Phase 5).
+The intended setup keeps all heavy work off personal machines. **Videos stream from Dropbox straight into S3, and the professor's GPU server processes them from S3** and writes features and results back. Step by step, including SSH key handling and the least-privilege AWS identity: [docs/remote_gpu_server.md](docs/remote_gpu_server.md).
+
+```bash
+python scripts/transfer_dropbox_to_s3.py                # Dropbox -> s3://<bucket>/videos, no local disk
+python scripts/fetch_annotations.py --splits train valid test --upload
+python run_dino_pipeline.py --from-s3 --upload --device cuda
+```
+
+- `infra/terraform/` defines the bucket (private, KMS-encrypted, versioned, HTTPS-only) and the server's IAM identity, plus an optional Lambda for the transfer. No secret is stored in Terraform.
+- `infra/gpu-server-setup.sh` sets up the server without sudo; `infra/ec2-setup.sh` does the same for an EC2 GPU instance.
+- Lightweight data preparation, such as producing the train/test split manifest from data in S3, is planned as an AWS Lambda (Phase 5).
 
 ## Development
 
@@ -91,9 +99,9 @@ soccer/        shared package: config, manifest, annotations, extraction, Dropbo
 configs/       pipeline.yaml, games.csv (manifest), excluded_matches.csv
 run_dino_pipeline.py  entry point: runs the stages in order
 scripts/       pipeline stage scripts (frames, features, clustering, contrastive, classifiers, commentary)
-infra/         machine setup (EC2 bootstrap)
+infra/         Terraform (bucket, IAM, optional Lambda), GPU server and EC2 setup scripts
 preprocess/    single-video extraction CLI, distribution plots, Whisper transcription
 tests/         unit and smoke tests
-docs/          leak_audit.md, cleanup_log.md
+docs/          remote_gpu_server.md, leak_audit.md, cleanup_log.md
 results/       run outputs (gitignored); archive_pre_fix/ holds the old, partly invalid results
 ```

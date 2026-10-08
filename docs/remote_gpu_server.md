@@ -1,0 +1,144 @@
+# Running the pipeline on the GPU server, with data in S3
+
+Nothing heavy runs on a personal machine. It only opens an SSH session.
+
+```
+Dropbox ──(stream, no disk)──> S3 bucket <──(read videos, write outputs)──> GPU server
+                                   │                                          │
+                     videos/ json/ frames/ features/ results/        frames, DINOv2, analysis
+```
+
+| Step | Runs on | Load |
+|---|---|---|
+| Copy videos Dropbox → S3 | GPU server (or the optional Lambda) | network only, about 1.2 GB per game |
+| Annotations → server (and S3) | GPU server | about 20 MB |
+| Frame extraction | GPU server CPU | one game's video on disk at a time |
+| DINOv2 features, contrastive, sequence models | GPU server GPU | about 1 min per game for features |
+| Clustering, classifiers | GPU server CPU | light |
+
+Measured on game 01: video 1.2 GB, extracted frames 0.34 GB, features 11 MB.
+For 30 games, that's about 36 GB in `videos/` and 10 GB of frames.
+
+## 1. Your SSH key (on your PC)
+
+The private key is a password to the server. **Never paste it into a chat, an
+email or a file in this repository**, and don't share it.
+
+1. Put it at `C:\Users\<you>\.ssh\soccer_gpu`, with no file extension. The public key
+   the server holds stays as it is.
+2. Restrict it to your account, or OpenSSH will refuse to use it. In PowerShell:
+   ```powershell
+   icacls $env:USERPROFILE\.ssh\soccer_gpu /inheritance:r /grant:r "$($env:USERNAME):(R)"
+   ```
+3. Add a host entry to `C:\Users\<you>\.ssh\config`:
+   ```
+   Host soccer-gpu
+       HostName <server address from your professor>
+       User <your username on the server>
+       Port 22
+       IdentityFile ~/.ssh/soccer_gpu
+       IdentitiesOnly yes
+       ServerAliveInterval 60
+   ```
+4. Test it: `ssh soccer-gpu nvidia-smi`.
+
+## 2. AWS, once
+
+From a machine with AWS admin credentials (after approval):
+
+```bash
+cd infra/terraform
+cp terraform.tfvars.example terraform.tfvars      # set region, profile, bucket name
+terraform init && terraform plan                  # review, then: terraform apply
+```
+
+Then create the server's access key and the Dropbox settings by hand. Terraform
+never stores secrets.
+
+```bash
+aws iam create-access-key --user-name soccer-vision-gpu-server     # shown once
+aws ssm put-parameter --type SecureString --name /soccer/dropbox/shared_url    --value '<link>'
+aws ssm put-parameter --type SecureString --name /soccer/dropbox/link_password --value '<password>'
+aws ssm put-parameter --type SecureString --name /soccer/dropbox/token         --value '<token>' --overwrite
+```
+
+On the server, store the access key as profile `soccer`, readable only by you:
+
+```bash
+umask 077; mkdir -p ~/.aws
+cat >> ~/.aws/credentials << 'EOF'
+[soccer]
+aws_access_key_id = ...
+aws_secret_access_key = ...
+EOF
+```
+
+The key can only touch this bucket's folders, the data key and the Dropbox
+parameters. Deactivate it when the project ends:
+`aws iam update-access-key --status Inactive`.
+
+## 3. Code and environment on the server
+
+```bash
+ssh soccer-gpu
+git clone -b cleanup/dino-contrastive https://github.com/AcaiLab/Soccer.git soccer   # once the branch is pushed
+cd soccer
+bash infra/gpu-server-setup.sh            # cu118 as argument for older drivers
+nano ~/.config/soccer/env                 # fill in the REPLACE values
+```
+
+If the branch isn't on GitHub yet, copy it as a bundle instead, from your PC:
+`git bundle create soccer.bundle cleanup/dino-contrastive`, then
+`scp soccer.bundle soccer-gpu:`, then on the server
+`git clone -b cleanup/dino-contrastive soccer.bundle soccer`.
+
+## 4. Copy the games from Dropbox to S3
+
+Run long jobs inside `tmux`, so they survive a dropped SSH connection
+(`tmux attach -t soccer` to come back).
+
+```bash
+tmux new -s soccer
+cd ~/soccer && source .venv/bin/activate && source ~/.config/soccer/env
+python scripts/transfer_dropbox_to_s3.py --workers 2 2>&1 | tee -a ~/transfer.log
+```
+
+The games are those in `configs/games.csv`. Rerunning skips files already in S3.
+A Dropbox token lasts about 4 hours. If it expires, the script stops with exit
+code 2: put a new token in SSM (`--overwrite`) and rerun.
+
+## 5. Annotations
+
+```bash
+python scripts/fetch_annotations.py --splits train valid test --upload
+```
+
+## 6. Run the pipeline
+
+```bash
+python run_dino_pipeline.py --from-s3 --upload --device cuda 2>&1 | tee -a ~/pipeline.log
+```
+
+This extracts frames (each game's video is fetched from S3, used and deleted),
+encodes them on the GPU, clusters, trains the contrastive head on training
+games and evaluates on held-out ones, runs the classifiers, then copies
+`features/` and `results/` to S3. Use `--stages` to run part of it, for
+example `--stages cluster classify` after changing only the analysis.
+
+Check on it from your PC without staying logged in:
+
+```bash
+ssh soccer-gpu "tail -n 30 ~/pipeline.log; nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv"
+```
+
+## Shared-server etiquette and safety
+
+- Use only the GPU you were given (`CUDA_VISIBLE_DEVICES` in the env file), and
+  check `nvidia-smi` before starting.
+- Data goes under `SOCCER_DATA_ROOT`. Videos are deleted after extraction;
+  remove `frames` with `rm -r $SOCCER_DATA_ROOT/results_by_label_epl_2021_2022`
+  once features are safely in S3.
+- Credentials on the server are `~/.aws/credentials` and `~/.config/soccer/env`,
+  both mode 600. Server administrators can still read them, which is why the
+  AWS key is limited to this bucket.
+- Nothing secret goes into the repository. CI scans every push with gitleaks.

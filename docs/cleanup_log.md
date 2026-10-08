@@ -130,3 +130,7 @@ Moves with `git mv`, so history follows each file. Nothing removed.
 | `model_encoders.py` | `soccer/encoders.py` | library code, not a script |
 | frame-encoding helpers in `temporal_clip_features.py` | `soccer/encoding.py` | shared by three scripts; torch-free |
 | `ec2-setup.sh` | `infra/ec2-setup.sh` | machine setup |
+
+## Phase 4c: S3 staging and the GPU server workflow (2026-10-07)
+
+Nothing removed or moved. Added: `soccer/transfer.py` and `scripts/transfer_dropbox_to_s3.py` (Dropbox → S3 streaming), `scripts/fetch_annotations.py`, S3 options on `batch_pipeline.py` and `run_dino_pipeline.py`, `infra/terraform/` (bucket, IAM, optional Lambda), `infra/gpu-server-setup.sh`, `infra/build_lambda.sh`, `docs/remote_gpu_server.md`.
