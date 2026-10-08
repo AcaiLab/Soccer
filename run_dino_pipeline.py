@@ -92,6 +92,8 @@ def main(argv=None):
             run("multimodal_classification.py")
         else:
             log("No annotation folder; skipping annotation-only and multimodal classification")
+    if {"cluster", "contrastive", "classify"} & set(args.stages):
+        run("report.py")
     if args.upload:
         for sub in ("features", "results"):
             n = upload_dir(data_path(cfg, sub), s3_uri(cfg, sub))
