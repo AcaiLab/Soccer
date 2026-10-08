@@ -1,0 +1,97 @@
+# Soccer event understanding with frozen vision models
+
+Can a general-purpose vision model (DINOv2, CLIP), never trained on soccer, tell what kind of event happens in the 60 seconds around a commentary timestamp, in a match it has never seen? This repository turns broadcast video into per-event embeddings and studies them with clustering, a contrastive projection head, and classifiers.
+
+> **Results in `clustering/` predate the fixes on this branch.** Several of them are invalid: the contrastive head saw test-game labels, frames were cut from the wrong half, and models were picked on the test set. See [docs/leak_audit.md](docs/leak_audit.md) before quoting any number, and rerun the pipeline.
+
+## Setup
+
+Python 3.10+ (3.11 is what CI uses).
+
+```bash
+python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
+# GPU machines: first install the torch build matching your CUDA driver, e.g.
+#   pip install torch==2.4.1 torchvision==0.19.1 --index-url https://download.pytorch.org/whl/cu121
+pip install -r requirements.txt
+pip install -e .                                       # makes the shared `soccer` package importable
+```
+
+`preprocess/transcribe.py` additionally needs `openai-whisper` and ffmpeg; nothing else uses them.
+
+## Data
+
+The data is **SoccerReplay-1988** (1,988 matches, shared under an NDA; its official split is 1,488 train, 250 valid and 250 test).
+
+| What | Where it comes from | Where it goes |
+|---|---|---|
+| Annotation JSONs | Hugging Face `Homie0609/SoccerReplay-1988` (gated) or the lab's Google Drive copy | `data/json/Soccer_Data_Json/{train,valid,test}/<league>/<match>/` |
+| Match videos (`*_1.mkv`, `*_2.mkv`) | Password-protected Dropbox link, downloaded by `batch_pipeline.py` | `data/videos/<match>/` (deleted after extraction) |
+| Extracted frames | `batch_pipeline.py` | `results_by_label_epl_2021_2022/game_XX_half_N/frames/<label>/` |
+| Features, results | Pipeline stages | `features/`, `clustering/` |
+
+`data/`, frames and features are gitignored. All paths are set in `configs/pipeline.yaml`; set `SOCCER_DATA_ROOT` to keep data elsewhere, e.g. on a mounted volume.
+
+### Credentials
+
+Nothing secret is stored in the repository. The Dropbox downloader reads, in order:
+
+1. Environment variables `DROPBOX_TOKEN` (or `DROPBOX_TOKEN_FILE`, or the default `tmp_dbx/token.txt`), `DROPBOX_SHARED_URL` and `DROPBOX_LINK_PASSWORD`.
+2. AWS SSM Parameter Store, if `SOCCER_SSM_PREFIX` is set: `<prefix>/dropbox/token`, `<prefix>/dropbox/shared_url` and `<prefix>/dropbox/link_password`, stored as SecureString.
+
+Dropbox tokens are short-lived. When one expires, the scripts stop with exit code 2; set a new token and rerun, and finished games are kept. S3 access uses the standard AWS credential chain (instance or task role, `AWS_PROFILE`).
+
+## Which games, and how they are split
+
+`configs/games.csv` is the single source of truth: one row per match with its game number, match folder, league, official SoccerReplay split, and this project's `train` / `val` / `test` split. Every script reads it.
+
+- **Splits are by whole match.** Events of one match share the stadium, light, kits and camera style, so an event-level split lets a model pass by recognising the match. Tests check that no match is in two splits.
+- `val` games choose models, epochs and configurations; `test` games are scored once, at the end.
+- `configs/excluded_matches.csv` lists dataset folders that must never be used (a duplicate, and two folders containing another match's annotations). The manifest refuses them.
+- To add games, append rows to `configs/games.csv` with the next game numbers. Draw test games from SoccerReplay's official test split if results should be comparable with other work.
+
+## Running the pipeline
+
+```bash
+python run_dino_pipeline.py                              # every stage, in order
+python run_dino_pipeline.py --stages features cluster    # a subset
+python run_dino_pipeline.py --stages frames --local-only # extract from videos already on disk
+```
+
+| Stage | Scripts | Hardware |
+|---|---|---|
+| `frames` | `batch_pipeline.py`: download, extract ±30 s at 1 fps per event (only events of the half each video holds), delete video | CPU, disk |
+| `features` | `temporal_clip_features.py` (per-event `(60, 768)` DINOv2 tensors), `extract_frame_features.py` (per-frame) | GPU (CPU works, ~11 min per game) |
+| `cluster` | `cluster_analysis.py`, `within_game_clustering.py` | CPU |
+| `contrastive` | `contrastive_training.py` (train games only), `evaluate_contrastive.py` (held-out vs train reported separately) | GPU or CPU |
+| `classify` | `event_classification.py`, `sequence_classifier.py`, `game_flow_features.py` + `multimodal_classification.py`, `temporal_event_classifier.py` | CPU (sequence models prefer GPU) |
+
+Each script also runs on its own; `python <script> --help` lists its options. Reported numbers always come with their baseline: purity with its shuffled-cluster purity, accuracy with macro-F1 and the majority-class accuracy.
+
+### On AWS
+
+- **GPU stages** (`features`, `contrastive`, sequence models) run on an EC2 GPU instance bootstrapped by `ec2-setup.sh`. It needs `SOCCER_BUCKET` set and an instance role with S3 read/write on that bucket and SSM read on the Dropbox parameters. The same container or commands fit SageMaker or AWS Batch jobs.
+- **CPU stages** (`frames`, `cluster`, `classify`) run anywhere: a laptop, a CPU instance, or Batch/ECS. `frames` downloads about 1.2 GB per match and keeps one match on disk at a time.
+- **Lightweight data preparation**, such as producing the train/test split manifest from data in S3, is planned as an AWS Lambda function under `infra/` (Phase 5).
+
+## Development
+
+```bash
+pip install -r requirements-dev.txt
+ruff check .
+pytest
+```
+
+CI (`.github/workflows/ci.yml`) runs lint, tests and a gitleaks secret scan on every push. It installs the torch-free `requirements-ci.txt`, so the three tests that need torch are skipped there. The tests include an extraction test on a synthetic video, which checks that each saved frame comes from the time in its filename, and end-to-end runs of every analysis script on synthetic data.
+
+## Layout
+
+```
+soccer/        shared package: config, manifest, annotations, extraction, Dropbox, storage,
+               features, metrics, evaluation protocol
+configs/       pipeline.yaml, games.csv (manifest), excluded_matches.csv
+*.py           pipeline stages (entry point: run_dino_pipeline.py)
+preprocess/    single-video extraction CLI, distribution plots, Whisper transcription
+tests/         unit and smoke tests
+docs/          leak_audit.md, cleanup_log.md
+clustering/    committed results from before the fixes (see the warning above)
+```
