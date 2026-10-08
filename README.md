@@ -49,6 +49,14 @@ Dropbox tokens are short-lived. When one expires, the scripts stop with exit cod
 - `configs/excluded_matches.csv` lists dataset folders that must never be used (a duplicate, and two folders containing another match's annotations). The manifest refuses them.
 - To add games, append rows to `configs/games.csv` with the next game numbers. Draw test games from SoccerReplay's official test split if results should be comparable with other work.
 
+Alternative manifests, selected with `SOCCER_MANIFEST=<file>` for any script or run:
+
+| Manifest | Games | Split |
+|---|---|---|
+| `configs/games.csv` (default) | 30 EPL 2021-22 | by match: train 01–20, val 21–24, test 25–30 |
+| `configs/games_venue_split.csv` | the same 30 | leave-venue-out: no test or validation stadium appears in training (`scripts/make_venue_split.py`) |
+| `configs/games_epl2122.csv` | all 65 EPL 2021-22 | SoccerReplay's official split: train 50, val 7, test 8 |
+
 ## Running the pipeline
 
 ```bash
@@ -65,7 +73,13 @@ python run_dino_pipeline.py --stages frames --local-only # extract from videos a
 | `contrastive` | `contrastive_training.py` (train games only), `evaluate_contrastive.py` (held-out vs train reported separately) | GPU or CPU |
 | `classify` | `event_classification.py`, `sequence_classifier.py`, `game_flow_features.py` + `multimodal_classification.py`, `temporal_event_classifier.py` | CPU (sequence models prefer GPU) |
 
-The stage scripts live in `scripts/` and also run on their own; `python scripts/<name>.py --help` lists their options. Reported numbers always come with their baseline: purity with its shuffled-cluster purity, accuracy with macro-F1 and the majority-class accuracy.
+The stage scripts live in `scripts/` and also run on their own; `python scripts/<name>.py --help` lists their options.
+
+Every reported number comes with what it should be compared against:
+
+- **Clustering** is scored against the event labels (ARI, NMI, purity next to its shuffled-cluster purity) *and* against game identity (`Game_ARI`, `Game_NMI`). `Game_ARI` well above `ARI` means the clusters follow the match more than the event.
+- **Classifiers** report test accuracy and macro-F1 with the majority-class accuracy and a 95% interval from resampling whole test games.
+- **Seeds**: `sequence_classifier.py --seeds 42 43 44` reports mean and sd over seeds. `scripts/robustness.py` repeats the contrastive head and all classifiers over 5 seeds for the match-level and leave-venue-out splits (add `--splits epl2122` for the 65-game set) and writes `results/robustness/summary.md`.
 
 ### Where it runs
 
