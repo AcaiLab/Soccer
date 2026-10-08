@@ -66,3 +66,13 @@ def test_token_file_env_is_used_when_no_option_given(no_dropbox_env, monkeypatch
     monkeypatch.setenv("DROPBOX_TOKEN_FILE", str(token))
     assert DropboxSharedLink.from_env()._token == "from-env"
     assert DropboxSharedLink.from_env(token_file=None)._token == "from-env"
+
+
+def test_one_run_can_get_its_own_output_folders(monkeypatch, tmp_path):
+    monkeypatch.setenv("SOCCER_DATA_ROOT", str(tmp_path / "data"))
+    monkeypatch.setenv("SOCCER_FEATURES_DIR", str(tmp_path / "runs" / "x" / "features"))
+    monkeypatch.setenv("SOCCER_MANIFEST", "configs/games_epl2122.csv")
+    cfg = load_config()
+    assert data_path(cfg, "features") == tmp_path / "runs" / "x" / "features"
+    assert data_path(cfg, "frames") == tmp_path / "data" / "results_by_label_epl_2021_2022"  # still shared
+    assert str(cfg["manifest"]).endswith("games_epl2122.csv")

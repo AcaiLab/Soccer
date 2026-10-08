@@ -17,7 +17,8 @@ def load_config(path: str | os.PathLike | None = None) -> dict:
     The file is `path`, else $SOCCER_CONFIG, else configs/pipeline.yaml. The data
     root is $SOCCER_DATA_ROOT if set, else `data_root` from the file; a relative
     data root is taken relative to the repository. $SOCCER_MANIFEST replaces the
-    games manifest (for alternative splits).
+    games manifest (for alternative splits), and $SOCCER_<NAME>_DIR replaces
+    paths.<name> (e.g. SOCCER_RESULTS_DIR) for one run.
     """
     path = pathlib.Path(path or os.environ.get("SOCCER_CONFIG") or DEFAULT_CONFIG)
     with open(path, encoding="utf-8") as f:
@@ -26,6 +27,12 @@ def load_config(path: str | os.PathLike | None = None) -> dict:
     cfg["data_root"] = root if root.is_absolute() else (REPO_ROOT / root).resolve()
     if os.environ.get("SOCCER_MANIFEST"):  # e.g. configs/games_venue_split.csv
         cfg["manifest"] = os.environ["SOCCER_MANIFEST"]
+    # SOCCER_FEATURES_DIR, SOCCER_RESULTS_DIR, ...: give one run its own outputs
+    # while sharing the extracted frames with others.
+    for key in cfg.get("paths", {}):
+        override = os.environ.get(f"SOCCER_{key.upper()}_DIR")
+        if override:
+            cfg["paths"][key] = override
     return cfg
 
 
