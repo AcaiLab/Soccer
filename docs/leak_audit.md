@@ -3,6 +3,7 @@
 - Audited: `dino-contrastive-pipeline` @ `dd3f65f`, its full history, and the other branches in the GitHub repo
 - Date: 2026-10-07
 - Working branch for fixes: `cleanup/dino-contrastive`
+- Status column updated after Phase 4 (2026-10-07)
 
 The audit has two parts: (A) secrets and personal data in git, and (B) machine-learning data leakage and data-correctness problems that affect whether the clusters and accuracies can be trusted. Secret values are redacted everywhere in this document.
 
@@ -42,7 +43,7 @@ A1–A3 together give anyone who can read the GitHub repository download access 
    - Ask the dataset provider (or whoever shared the folder) to disable this shared link and issue a new link and password.
    - The Dropbox API token that was pasted into the Claude Code session on 2026-10-07 should be revoked in the Dropbox app console once downloads are finished.
    - Rotate whatever Dropbox token is stored at `s3://…/config/tmp_dbx/`.
-2. **Stop new copies.** Move `SHARED_URL` and `LINK_PASSWORD` out of the code into environment variables or AWS SSM Parameter Store (SecureString) or Secrets Manager, read at run time. This is planned for Phase 4 and needs your approval because it changes how the scripts are run.
+2. **Stop new copies.** Move `SHARED_URL` and `LINK_PASSWORD` out of the code into environment variables or AWS SSM Parameter Store (SecureString) or Secrets Manager, read at run time. **Done** (`2a6dfdf`): `soccer/dropbox.py` reads environment variables or SSM; no script contains them, and CI scans the tree with gitleaks on every push. This does not remove them from history or revoke them.
 3. **History removal, optional and only with explicit confirmation.**
    - `git filter-repo --replace-text` with a file listing the 2 secrets, run on a fresh mirror clone, then force-push every affected branch and tag.
    - Everyone with a clone must re-clone, and GitHub may keep cached views for a while.
@@ -56,17 +57,17 @@ A1–A3 together give anyone who can read the GitHub repository download access 
 
 | # | Finding | Type | Severity | Affects | Status |
 |---|---|---|---|---|---|
-| B1 | Contrastive head trained on the labels of the events it is evaluated on | leakage | critical | contrastive purity 0.973 / ARI 0.80; contrastive classifier 96.2% | open, fix in Phase 4 |
-| B2 | `evaluate_contrastive.py` scores training and held-out events together | leakage | high | every contrastive metric, including `contrastive_30games_leakfree` | open, fix in Phase 4 |
-| B3 | Frame extractor cuts every event from both halves' videos | data correctness (label noise) | critical | all 30- and 66-game features and results | **fixed** on `cleanup/dino-contrastive` |
-| B4 | Pilot games 01–10 used a ±15 s window, later games ±30 s | per-game confound | high | 30- and 66-game clustering and classification | open: re-extract all games |
-| B5 | Best model chosen by test accuracy, then reported on that same test | selection on test | medium | `event_classification.py`, `multimodal_classification.py`, `sequence_classifier.py` reports | open, fix in Phase 4 |
-| B6 | 5 of 6 held-out games share a home stadium with training games | weak group split for the invariance claim | medium | every 30-game held-out result | recommendation below |
-| B7 | Dataset duplicates and mismatched annotations in SoccerReplay-1988 | duplicates / wrong labels | medium | any game set that includes them | exclude in the games manifest |
-| B8 | No games manifest; games numbered by download order; the JSON lookup searches the official `test/` and `valid/` folders too | reproducibility, possible split leak | medium | games 31–68 unverifiable | open, fix in Phase 4 |
-| B9 | Game-flow features use the true labels of previous events (teacher forcing) | target information at inference | medium | annotation-only and multimodal results | report as upper bound |
-| B10 | Future-information columns (`next_event`, `n_next_attacks`) computed next to the features | future leakage, latent | low | none today (not in the feature list) | guard in Phase 4 |
-| B11 | Categorical encoders fit on all games before the split | preprocessing before split | low | game-flow features | fix in Phase 4 |
+| B1 | Contrastive head trained on the labels of the events it is evaluated on | leakage | critical | contrastive purity 0.973 / ARI 0.80; contrastive classifier 96.2% | **fixed** (`37e614b`): triplets from manifest train games only; overlap with test refused |
+| B2 | `evaluate_contrastive.py` scores training and held-out events together | leakage | high | every contrastive metric, including `contrastive_30games_leakfree` | **fixed** (`37e614b`): held-out and train games reported separately |
+| B3 | Frame extractor cuts every event from both halves' videos | data correctness (label noise) | critical | all 30- and 66-game features and results | **fixed** (`1f19f8a`, `2a6dfdf`); frames must be re-extracted |
+| B4 | Pilot games 01–10 used a ±15 s window, later games ±30 s | per-game confound | high | 30- and 66-game clustering and classification | window set once in `configs/pipeline.yaml` and recorded per half in `extraction.json`; **open until all games are re-extracted** |
+| B5 | Best model chosen by test accuracy, then reported on that same test | selection on test | medium | `event_classification.py`, `multimodal_classification.py`, `sequence_classifier.py` reports | **fixed** (`7c5c7fb`): chosen on validation games, test scored once |
+| B6 | 5 of 6 held-out games share a home stadium with training games | weak group split for the invariance claim | medium | every 30-game held-out result | open: recommendation below |
+| B7 | Dataset duplicates and mismatched annotations in SoccerReplay-1988 | duplicates / wrong labels | medium | any game set that includes them | **fixed** (`f498e52`): `configs/excluded_matches.csv`, refused by the manifest loader |
+| B8 | No games manifest; games numbered by download order; the JSON lookup searches the official `test/` and `valid/` folders too | reproducibility, possible split leak | medium | games 31–68 unverifiable | **fixed** (`f498e52`, `2a6dfdf`): `configs/games.csv`; official split checked at extraction. Games 31–68 must be added to it |
+| B9 | Game-flow features use the true labels of previous events (teacher forcing) | target information at inference | medium | annotation-only and multimodal results | reported as an upper bound in the annotation-only and multimodal reports |
+| B10 | Future-information columns (`next_event`, `n_next_attacks`) computed next to the features | future leakage, latent | low | none today (not in the feature list) | **fixed** (`7c5c7fb`): columns no longer computed; `soccer/game_flow.py` rejects them as features |
+| B11 | Categorical encoders fit on all games before the split | preprocessing before split | low | game-flow features | **fixed** (`7c5c7fb`): encoders fit on training rows inside each model |
 
 ### B1. Contrastive head trained on test-game labels (critical)
 

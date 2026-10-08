@@ -57,3 +57,45 @@ Nothing removed or moved. Findings are in `docs/leak_audit.md`. Code change: `pr
 | files removed | size removed | tracked files remaining |
 |---|---|---|
 | 0 | 0 | 114 |
+
+## Phase 4: pipeline-ready refactor (2026-10-07)
+
+Requested by Hasset Admasu on 2026-10-07 ("fix everything that you see wrong, especially conventional practices"). **No file was deleted or moved.** Code was fixed in place, and new files were added. Details are in each commit message (`86a0d9c`..`HEAD`) and the fixed findings are marked in `docs/leak_audit.md`.
+
+### Files reduced to forwarders
+
+These now only call the script that replaced them, so existing commands keep working. Their former logic is recoverable from the backup tag.
+
+| path | now forwards to | why |
+|---|---|---|
+| `process_10_games.py` | `batch_pipeline.py --local-only --games 01..10` | duplicated extraction logic, string-patched the extractor |
+| `process_new_games.py` | `batch_pipeline.py --local-only --games ...` (games looked up in the manifest) | same |
+| `clip_feature_extraction.py` | `extract_frame_features.py --model openai/clip-vit-base-patch32` | duplicate of the model-agnostic extractor |
+
+### Outputs no longer produced
+
+| output | was produced by | why removed |
+|---|---|---|
+| `clip_temporal.pkl` | `temporal_clip_features.py` | nothing read it; pickle files can run code when loaded |
+| "attention_pool" results | `event_classification.py`, `multimodal_classification.py` | mathematically equal to mean pooling for unit-length frames |
+| `next_event`, `n_next_attacks` columns; pre-encoded `*_enc` columns and `game_flow_features.npz` | `game_flow_features.py` | future information; encoders must be fit on training rows only |
+| `dinov2_improvement_heatmap.png` | `plot_dinov2_vs_clip.py` | percent change on near-zero ARI exaggerates differences |
+| hardcoded external baselines (13.75%, 30.54%) on plots | classifier scripts | different protocol and test set; not comparable |
+
+### Proposed for removal or move: awaiting approval, nothing done
+
+| path | size | type | reason | confidence | recoverable? |
+|---|---|---|---|---|---|
+| `process_10_games.py` | 0.5 KB | code | forwarder; `batch_pipeline.py --local-only` replaces it | high | yes, in git history |
+| `process_new_games.py` | 1.3 KB | code | forwarder; same | high | yes, in git history |
+| `clip_feature_extraction.py` | 0.7 KB | code | forwarder; `extract_frame_features.py` replaces it | high | yes, in git history |
+| `fast_batch_pipeline.py` | 4.6 KB | code | duplicates `batch_pipeline.py`; driven by a gitignored queue file | medium: keep if the queue workflow is still used for games 31–68 | yes, in git history |
+| `soccerProjNewCode-1.py` | 9.0 KB | code | superseded by `soccer/extract.py`; hyphenated name is not importable; also on `main` | medium | yes, in git history and on `main` |
+| `clustering/` (all files) | 15 MB | results | pre-fix results, several invalid (leak audit B1–B5) | low: the course cites them; suggest moving to `results/archive_pre_fix/` instead of deleting | yes, in git history |
+| move root scripts into `scripts/` (or `src/`) | n/a | layout | conventional layout | low: changes every documented command | yes, via `git mv` |
+
+### Phase 4 totals
+
+| files removed | files moved | files added | tracked files |
+|---|---|---|---|
+| 0 | 0 | 28 | 142 (after the leak-audit and log updates) |
