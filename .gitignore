@@ -67,3 +67,10 @@ wandb/
 mlruns/
 runs/
 lightning_logs/
+
+# ── Packaging and tool caches ───────────────────────────────────────────────
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/

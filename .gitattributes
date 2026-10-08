@@ -1,0 +1,12 @@
+# Store text with LF line endings whatever the contributor's OS; shell scripts
+# must stay LF to run on Linux (EC2, SageMaker, CI).
+* text=auto eol=lf
+*.sh text eol=lf
+
+# Binary outputs
+*.png binary
+*.jpg binary
+*.npy binary
+*.npz binary
+*.pt binary
+*.pdf binary
