@@ -49,7 +49,8 @@ def main(argv=None):
     parser.add_argument("--from-s3", nargs="?", const="", default=None, metavar="URI",
                         help="read videos from S3 (default URI: <s3_root>/videos) instead of Dropbox")
     parser.add_argument("--token-file", default=None,
-                        help="Dropbox token file if DROPBOX_TOKEN is not set (default: $DROPBOX_TOKEN_FILE, else tmp_dbx/token.txt)")
+                        help="file with one fixed Dropbox access token, used instead of any refresh token "
+                             "(default: a configured refresh token, else $DROPBOX_TOKEN_FILE, else tmp_dbx/token.txt)")
     args = parser.parse_args(argv)
 
     games = load_manifest(repo_path(cfg, "manifest"), repo_path(cfg, "excluded_matches"))
@@ -87,7 +88,8 @@ def main(argv=None):
                 video_dir = download_videos(client, game, videos_root)
             extract_game(game, video_dir, annotation, frames_root, settings)
         except TokenExpired as e:
-            print(f"\n*** {e}. Set a new token and rerun; finished games are kept. ***")
+            print(f"\n*** {e}. Renew the Dropbox credentials (README, Credentials) and rerun; "
+                  f"finished games are kept. ***")
             sys.exit(2)
         except Exception as e:  # keep going; one bad game should not stop the batch
             print(f"    FAILED: {e}", flush=True)

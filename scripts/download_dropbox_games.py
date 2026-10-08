@@ -27,7 +27,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Download SoccerReplay-1988 videos for manifest games.")
     parser.add_argument("--games", nargs="+", default=None, help="game numbers (default: all in manifest)")
     parser.add_argument("--token-file", default=None,
-                        help="Dropbox token file if DROPBOX_TOKEN is not set (default: $DROPBOX_TOKEN_FILE, else tmp_dbx/token.txt)")
+                        help="file with one fixed Dropbox access token, used instead of any refresh token "
+                             "(default: a configured refresh token, else $DROPBOX_TOKEN_FILE, else tmp_dbx/token.txt)")
     args = parser.parse_args(argv)
 
     games = load_manifest(repo_path(cfg, "manifest"), repo_path(cfg, "excluded_matches"))
@@ -42,7 +43,7 @@ def main(argv=None):
         try:
             download_videos(client, game, videos_root)
         except TokenExpired as e:
-            print(f"*** {e}. Set a new token and rerun. ***")
+            print(f"*** {e}. Renew the Dropbox credentials (README, Credentials) and rerun. ***")
             sys.exit(2)
 
 

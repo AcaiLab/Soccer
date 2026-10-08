@@ -16,13 +16,6 @@ def test_dropped_labels_cover_junk_and_graphics():
     assert "corner" not in labels
 
 
-@pytest.fixture
-def no_dropbox_env(monkeypatch):
-    for name in ("DROPBOX_TOKEN", "DROPBOX_TOKEN_FILE", "DROPBOX_SHARED_URL",
-                 "DROPBOX_LINK_PASSWORD", "SOCCER_SSM_PREFIX"):
-        monkeypatch.delenv(name, raising=False)
-
-
 def test_missing_credentials_fail_clearly(no_dropbox_env):
     with pytest.raises(RuntimeError, match="DROPBOX_SHARED_URL"):
         DropboxSharedLink.from_env()
@@ -33,7 +26,7 @@ def test_token_can_come_from_a_file(no_dropbox_env, monkeypatch, tmp_path):
     token.write_text("abc\n")
     monkeypatch.setenv("DROPBOX_SHARED_URL", "https://example.invalid/link")
     client = DropboxSharedLink.from_env(token_file=token)
-    assert client._token == "abc"
+    assert client._tokens.get() == "abc"
 
 
 class FakeResponse:
@@ -64,8 +57,8 @@ def test_token_file_env_is_used_when_no_option_given(no_dropbox_env, monkeypatch
     token.write_text("from-env\n")
     monkeypatch.setenv("DROPBOX_SHARED_URL", "https://example.invalid/link")
     monkeypatch.setenv("DROPBOX_TOKEN_FILE", str(token))
-    assert DropboxSharedLink.from_env()._token == "from-env"
-    assert DropboxSharedLink.from_env(token_file=None)._token == "from-env"
+    assert DropboxSharedLink.from_env()._tokens.get() == "from-env"
+    assert DropboxSharedLink.from_env(token_file=None)._tokens.get() == "from-env"
 
 
 def test_one_run_can_get_its_own_output_folders(monkeypatch, tmp_path):

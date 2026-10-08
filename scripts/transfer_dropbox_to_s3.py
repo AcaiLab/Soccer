@@ -33,7 +33,8 @@ def main(argv=None):
     parser.add_argument("--games", nargs="+", default=None, help="game numbers (default: all in manifest)")
     parser.add_argument("--workers", type=int, default=2, help="games copied in parallel")
     parser.add_argument("--token-file", default=None,
-                        help="Dropbox token file if DROPBOX_TOKEN is not set (default: $DROPBOX_TOKEN_FILE, else tmp_dbx/token.txt)")
+                        help="file with one fixed Dropbox access token, used instead of any refresh token "
+                             "(default: a configured refresh token, else $DROPBOX_TOKEN_FILE, else tmp_dbx/token.txt)")
     args = parser.parse_args(argv)
 
     dest = args.dest or s3_uri(cfg, "videos")
@@ -54,7 +55,8 @@ def main(argv=None):
                     total += size if outcome == "copied" else 0
                     print(f"game_{g.game_num} {name}  {size / 1e9:.2f} GB  {outcome}", flush=True)
             except TokenExpired as e:
-                print(f"\n*** {e}. Set a new token and rerun; finished files are kept. ***", flush=True)
+                print(f"\n*** {e}. Renew the Dropbox credentials (README, Credentials) and rerun; "
+                      f"finished files are kept. ***", flush=True)
                 pool.shutdown(cancel_futures=True)
                 sys.exit(2)
             except Exception as e:  # one bad game should not stop the rest
