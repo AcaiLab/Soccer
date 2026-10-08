@@ -1,0 +1,10 @@
+# Copy to terraform.tfvars (gitignored) and fill in.
+region      = "us-east-1"
+aws_profile = "soccer-admin"
+bucket_name = "soccer-vision-data-<unique-suffix>"
+
+# true if the Dropbox -> S3 copy runs on the GPU server
+server_can_transfer = true
+
+# true to copy from Dropbox with Lambda instead (build infra/build/transfer_lambda.zip first)
+enable_transfer_lambda = false
