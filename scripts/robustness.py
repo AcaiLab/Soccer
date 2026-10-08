@@ -3,7 +3,8 @@ Repeat the contrastive and classification stages over seeds and splits.
 
 For each manifest (default: the match-level split and the leave-venue-out
 split) and each seed, trains and evaluates the contrastive head and reruns
-the classifiers, then writes one summary:
+the classifiers with that seed (contrastive head, pooled and multimodal
+classifiers, sequence models), then writes one summary:
 
     <results>/robustness/summary.csv   one row per split, metric: mean, sd, n
     <results>/robustness/summary.md    the same as a readable table
@@ -101,21 +102,22 @@ def main(argv=None):
                       ("before" if "before" in r["Representation"] else "after")
                 rows.append({"split": split, "seed": seed, "metric": f"contrastive_{tag}_ARI", "value": r["ARI"]})
                 rows.append({"split": split, "seed": seed, "metric": f"contrastive_{tag}_purity", "value": r["Purity"]})
-            step("event_classification.py", ["--contrastive-features", head, "--out-dir", out / f"pooled_s{seed}"],
+            step("event_classification.py", ["--contrastive-features", head, "--seed", seed,
+                                              "--out-dir", out / f"pooled_s{seed}"],
                  manifest, out / f"pooled_s{seed}" / "classification_report.txt")
             s = read_test_summary(out / f"pooled_s{seed}" / "classification_report.txt")
             rows += [{"split": split, "seed": seed, "metric": f"pooled_{k}", "value": s[k]}
                      for k in ("accuracy", "macro_f1", "majority") if k in s]
+            step("multimodal_classification.py", ["--seed", seed, "--out-dir", out / f"multimodal_s{seed}"],
+                 manifest, out / f"multimodal_s{seed}" / "multimodal_classification_report.txt")
+            s = read_test_summary(out / f"multimodal_s{seed}" / "multimodal_classification_report.txt")
+            rows += [{"split": split, "seed": seed, "metric": f"multimodal_{k}", "value": s[k]}
+                     for k in ("accuracy", "macro_f1") if k in s]
         step("sequence_classifier.py", ["--seeds", *args.seeds, "--out-dir", out / "sequence", *device], manifest,
              out / "sequence" / "sequence_test_by_seed.csv")
         for _, r in pd.read_csv(out / "sequence" / "sequence_test_by_seed.csv").iterrows():
             rows.append({"split": split, "seed": int(r["seed"]), "metric": "sequence_accuracy", "value": r["Accuracy"]})
             rows.append({"split": split, "seed": int(r["seed"]), "metric": "sequence_macro_f1", "value": r["Macro_F1"]})
-        step("multimodal_classification.py", ["--out-dir", out / "multimodal"], manifest,
-             out / "multimodal" / "multimodal_classification_report.txt")
-        s = read_test_summary(out / "multimodal" / "multimodal_classification_report.txt")
-        rows += [{"split": split, "seed": cfg["seed"], "metric": f"multimodal_{k}", "value": s[k]}
-                 for k in ("accuracy", "macro_f1") if k in s]
 
     df = pd.DataFrame(rows)
     root.mkdir(parents=True, exist_ok=True)

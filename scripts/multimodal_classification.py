@@ -59,9 +59,10 @@ def main(argv=None):
     parser.add_argument("--val-games", nargs="+", default=None)
     parser.add_argument("--test-games", nargs="+", default=None)
     parser.add_argument("--keep-all-labels", action="store_true")
+    parser.add_argument("--seed", type=int, default=cfg["seed"], help="seed for the classifiers (MLP initialisation)")
     args = parser.parse_args(argv)
 
-    seed = cfg["seed"]
+    seed = args.seed
     out_dir = pathlib.Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     manifest = load_manifest(repo_path(cfg, "manifest"))
