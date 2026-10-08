@@ -31,13 +31,17 @@ class TemporalFeatures:
         return self.subset(~np.isin(self.labels, list(labels)))
 
 
-def load_temporal(path: str | pathlib.Path) -> TemporalFeatures:
-    """Read clip_temporal_padded.npz (a file, or the directory holding it)."""
+def load_temporal(path: str | pathlib.Path, games=None) -> TemporalFeatures:
+    """Read clip_temporal_padded.npz (a file, or the directory holding it).
+
+    With `games`, only events of those games are kept (pass the manifest's
+    games, so extra games in the features never leak into an analysis).
+    """
     path = pathlib.Path(path)
     if path.is_dir():
         path = path / TEMPORAL_FILE
     npz = np.load(path, allow_pickle=False)
-    return TemporalFeatures(
+    tf = TemporalFeatures(
         features=npz["features"].astype(np.float32),
         masks=npz["masks"].astype(bool),
         labels=npz["labels"].astype(str),
@@ -45,6 +49,9 @@ def load_temporal(path: str | pathlib.Path) -> TemporalFeatures:
         halves=npz["halves"].astype(str),
         event_tags=npz["event_tags"].astype(str),
     )
+    if games is not None:
+        tf = tf.subset(np.isin(tf.games, [normalize_game_id(g) for g in games]))
+    return tf
 
 
 def l2_normalize(x: np.ndarray) -> np.ndarray:

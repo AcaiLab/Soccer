@@ -29,6 +29,7 @@ from sklearn.metrics import silhouette_score  # noqa: E402
 
 from soccer.config import data_path, dropped_labels, load_config  # noqa: E402
 from soccer.features import load_temporal, mean_pool  # noqa: E402
+from soccer.manifest import manifest_games  # noqa: E402
 from soccer.metrics import clustering_scores  # noqa: E402
 
 
@@ -44,7 +45,7 @@ def main(argv=None):
     out_dir = pathlib.Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     seed = cfg["seed"]
-    tf = load_temporal(args.features_dir)
+    tf = load_temporal(args.features_dir, games=manifest_games(cfg))
     if not args.keep_all_labels:
         tf = tf.drop_labels(dropped_labels(cfg))
     feat_mean = mean_pool(tf.features, tf.masks)

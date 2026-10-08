@@ -34,16 +34,22 @@ def split_by_game(games: np.ndarray, labels: np.ndarray, manifest: list[Game],
                   val_games=None, test_games=None) -> Split:
     """Masks for train / val / test events.
 
-    Defaults come from the manifest; explicit game lists override them. Test
-    events whose label never occurs in training are dropped, since no
-    classifier could predict them.
+    Defaults come from the manifest; explicit game lists override them. Only
+    manifest games are used: events of other games (e.g. extra games present
+    in the features) belong to no split, rather than silently becoming
+    training data. Test events whose label never occurs in training are
+    dropped, since no classifier could predict them.
     """
     test_games = sorted(normalize_game_id(g) for g in (test_games or game_nums(manifest, "test")))
     val_games = sorted(normalize_game_id(g) for g in (val_games or game_nums(manifest, "val")))
     assert_disjoint(val=val_games, test=test_games)
+    in_manifest = {g.game_num for g in manifest} | set(val_games) | set(test_games)
     test = np.isin(games, test_games)
     val = np.isin(games, val_games)
-    train = ~(test | val)
+    train = np.isin(games, list(in_manifest)) & ~(test | val)
+    outside = int((~np.isin(games, list(in_manifest))).sum())
+    if outside:
+        print(f"  {outside} events from games outside the manifest are not used")
     seen = set(labels[train])
     known = np.isin(labels, list(seen))
     dropped = int((test & ~known).sum())

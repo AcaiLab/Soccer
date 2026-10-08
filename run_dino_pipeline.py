@@ -60,7 +60,9 @@ def main(argv=None):
     parser.add_argument("--from-s3", action="store_true", help="frames stage: read videos from <s3_root>/videos")
     parser.add_argument("--upload", action="store_true",
                         help="after the stages, copy features/ and results/ to <s3_root>/features, /results")
-    parser.add_argument("--skip-flat", action="store_true", help="features stage: skip per-frame features")
+    parser.add_argument("--with-flat", action="store_true",
+                        help="features stage: also run extract_frame_features.py (a second encoding pass; "
+                             "clustering takes per-frame embeddings from the per-event features without it)")
     args = parser.parse_args(argv)
 
     device = ["--device", args.device] if args.device else []
@@ -71,8 +73,9 @@ def main(argv=None):
         run("batch_pipeline.py", *(["--games", *args.games] if args.games else []),
             *(["--local-only"] if args.local_only else []), *(["--from-s3"] if args.from_s3 else []))
     if "features" in args.stages:
-        run("temporal_clip_features.py", "--model", args.model, "--batch-size", args.batch_size, *device)
-        if not args.skip_flat:
+        run("temporal_clip_features.py", "--model", args.model, "--batch-size", args.batch_size,
+            *(device or ["--device", "auto"]))
+        if args.with_flat:
             run("extract_frame_features.py", "--model", args.model, "--batch-size", args.batch_size, *device)
     if "cluster" in args.stages:
         run("cluster_analysis.py", "--model", args.model)

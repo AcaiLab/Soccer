@@ -40,7 +40,10 @@ from soccer.config import data_path, dropped_labels, load_config, repo_path  # n
 from soccer.evaluation import format_test_summary, select_on_validation, split_by_game  # noqa: E402
 from soccer.features import load_temporal, mean_pool  # noqa: E402
 from soccer.game_flow import CATEGORICAL, FEATURES, encoder  # noqa: E402
-from soccer.manifest import load_manifest  # noqa: E402
+from soccer.manifest import (
+    load_manifest,  # noqa: E402
+    manifest_games,  # noqa: E402
+)
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -64,7 +67,7 @@ def main(argv=None):
     manifest = load_manifest(repo_path(cfg, "manifest"))
     match_of = {g.game_num: g.match_id for g in manifest}
 
-    tf = load_temporal(args.dino_features)
+    tf = load_temporal(args.dino_features, games=manifest_games(cfg))
     if not args.keep_all_labels:
         tf = tf.drop_labels(dropped_labels(cfg))
     gf = pd.read_csv(args.game_flow_features, keep_default_na=False)

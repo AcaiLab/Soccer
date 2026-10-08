@@ -62,3 +62,67 @@ def save_outputs(out_dir: pathlib.Path, padded, masks, keys, n_frames, manifest_
     })
     df.to_csv(out_dir / "temporal_metadata.csv", index=False)
     return df
+
+
+def _fingerprint(meta: dict, frames: dict) -> str:
+    """What a cached half depends on: encoder settings and the exact frame files."""
+    import hashlib
+    import json
+
+    names = sorted(f"{k[2]}/{pathlib.Path(p).name}" for k, fs in frames.items() for _, p in fs)
+    return json.dumps({**meta, "frames": hashlib.sha256("\n".join(names).encode()).hexdigest()}, sort_keys=True)
+
+
+def encode_cached(get_encoder, events: dict, max_frames: int, batch_size: int,
+                  cache_dir: pathlib.Path, meta: dict):
+    """encode_events, cached per game half under cache_dir.
+
+    A half is re-encoded only if its frames or `meta` (model, max_frames) changed,
+    so adding games encodes just the new ones. `get_encoder` is called at most
+    once, and only if something needs encoding. Returns the same tuple as
+    encode_events plus (halves reused, halves encoded).
+    """
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    by_half: dict = {}
+    for k, frames in events.items():
+        by_half.setdefault((k[0], k[1]), {})[k] = frames
+    encoder, reused, encoded = None, 0, 0
+    parts = []
+    for game, half in sorted(by_half):
+        group = by_half[(game, half)]
+        fp = _fingerprint(meta, group)
+        path = cache_dir / f"game_{game}_half_{half}.npz"
+        if path.is_file():
+            with np.load(path, allow_pickle=False) as z:
+                if str(z["fingerprint"]) == fp:
+                    keys = [tuple(k) for k in z["keys"].tolist()]
+                    parts.append((z["padded"], z["masks"], keys, z["n_frames"].tolist()))
+                    reused += 1
+                    continue
+        encoder = encoder or get_encoder()
+        padded, masks, keys, n_frames = encode_events(encoder, group, max_frames, batch_size, progress=False)
+        np.savez(path, padded=padded, masks=masks, keys=np.array(keys), n_frames=np.array(n_frames),
+                 fingerprint=np.array(fp))
+        parts.append((padded, masks, keys, n_frames))
+        encoded += 1
+        print(f"  encoded game {game} half {half}: {len(keys)} events", flush=True)
+    padded = np.concatenate([p[0] for p in parts])
+    masks = np.concatenate([p[1] for p in parts])
+    keys = [k for p in parts for k in p[2]]
+    n_frames = [n for p in parts for n in p[3]]
+    return padded, masks, keys, n_frames, reused, encoded
+
+
+def pick_device(requested: str | None, min_free_gb: float = 4.0) -> str:
+    """'cuda' only if a GPU exists and has min_free_gb free (shared GPUs fill up)."""
+    if requested and requested != "auto":
+        return requested
+    import torch
+
+    if not torch.cuda.is_available():
+        return "cpu"
+    free = torch.cuda.mem_get_info()[0] / 1e9
+    if free < min_free_gb:
+        print(f"GPU has only {free:.1f} GB free (another job?); using the CPU", flush=True)
+        return "cpu"
+    return "cuda"

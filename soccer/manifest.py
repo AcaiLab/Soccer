@@ -86,3 +86,10 @@ def assert_disjoint(**groups) -> None:
             if i in seen and seen[i] != name:
                 raise ValueError(f"{i!r} is in both {seen[i]} and {name}")
             seen[i] = name
+
+
+def manifest_games(cfg: dict) -> list[str]:
+    """Game numbers of the manifest in use (configs/games.csv or $SOCCER_MANIFEST)."""
+    from soccer.config import repo_path
+
+    return [g.game_num for g in load_manifest(repo_path(cfg, "manifest"))]

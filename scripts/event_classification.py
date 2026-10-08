@@ -33,7 +33,11 @@ from sklearn.metrics import ConfusionMatrixDisplay, classification_report, confu
 from soccer.config import data_path, dropped_labels, load_config, repo_path  # noqa: E402
 from soccer.evaluation import format_test_summary, select_on_validation, split_by_game  # noqa: E402
 from soccer.features import POOLING, load_temporal  # noqa: E402
-from soccer.manifest import assert_disjoint, load_manifest  # noqa: E402
+from soccer.manifest import (  # noqa: E402
+    assert_disjoint,
+    load_manifest,
+    manifest_games,  # noqa: E402
+)
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -69,7 +73,7 @@ def main(argv=None):
     seed = cfg["seed"]
     out_dir = pathlib.Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    tf = load_temporal(args.dino_features)
+    tf = load_temporal(args.dino_features, games=manifest_games(cfg))
     if not args.keep_all_labels:
         tf = tf.drop_labels(dropped_labels(cfg))
     split = split_by_game(tf.games, tf.labels, load_manifest(repo_path(cfg, "manifest")),

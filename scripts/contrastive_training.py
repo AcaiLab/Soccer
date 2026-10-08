@@ -44,8 +44,15 @@ import torch.nn.functional as F  # noqa: E402
 from torch.utils.data import DataLoader, Dataset  # noqa: E402
 
 from soccer.config import data_path, dropped_labels, load_config, repo_path  # noqa: E402
+from soccer.encoding import pick_device  # noqa: E402
 from soccer.features import load_temporal, mean_pool  # noqa: E402
-from soccer.manifest import assert_disjoint, game_nums, load_manifest, normalize_game_id  # noqa: E402
+from soccer.manifest import (  # noqa: E402
+    assert_disjoint,
+    game_nums,
+    load_manifest,
+    manifest_games,  # noqa: E402
+    normalize_game_id,
+)
 
 
 class TripletDataset(Dataset):
@@ -132,13 +139,13 @@ def main(argv=None):
     parser.add_argument("--train-games", nargs="+", default=None,
                         help="games to mine triplets from (default: the manifest's train split)")
     parser.add_argument("--keep-all-labels", action="store_true")
-    parser.add_argument("--device", default=None)
+    parser.add_argument("--device", default="auto", help="cuda / cpu / auto (GPU only if it has free memory)")
     args = parser.parse_args(argv)
 
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
-    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
+    device = pick_device(args.device)
     out_dir = pathlib.Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -148,7 +155,7 @@ def main(argv=None):
                          else game_nums(games_manifest, "train"))
     assert_disjoint(train=train_games, test=test_games)
 
-    tf = load_temporal(args.features_dir)
+    tf = load_temporal(args.features_dir, games=manifest_games(cfg))
     if not args.keep_all_labels:
         tf = tf.drop_labels(dropped_labels(cfg))
     feat = mean_pool(tf.features, tf.masks)

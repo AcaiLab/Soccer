@@ -11,6 +11,9 @@ Filename pattern expected:
     {label}_frame_{event_tag}_t{frame_tag}.jpg
     e.g.  corner_frame_09-00.000_t08-45.000.jpg
 
+Only the manifest's games are encoded. Encodings are cached per game half in
+<out>/cache/, so adding games encodes only the new ones.
+
 Outputs (in --out, default features/temporal_<model name>)
 ----------------------------------------------------------
   clip_temporal_padded.npz    - padded features (E, T, D) + masks (E, T) + labels,
@@ -31,7 +34,7 @@ import pathlib
 import numpy as np
 
 from soccer.config import data_path, load_config, repo_path
-from soccer.encoding import encode_events, save_outputs
+from soccer.encoding import encode_cached, pick_device, save_outputs
 from soccer.frames import scan_events
 from soccer.manifest import load_manifest
 
@@ -47,30 +50,32 @@ def main(argv=None):
     parser.add_argument("--max-frames", type=int, default=fcfg["max_frames"],
                         help="Max frames kept per event (uniform subsample if exceeded)")
     parser.add_argument("--batch-size", type=int, default=fcfg["batch_size"])
-    parser.add_argument("--device", default=None, help="cuda / cpu (auto-detected if omitted)")
+    parser.add_argument("--device", default="auto",
+                        help="cuda / cpu / auto (auto: GPU only if it has enough free memory)")
     args = parser.parse_args(argv)
-
-    import torch
 
     from soccer.encoders import build_encoder
 
     frames_root = pathlib.Path(args.frames_root)
     out_dir = pathlib.Path(args.out or data_path(cfg, "features") / f"temporal_{args.model.split('/')[-1]}")
     out_dir.mkdir(parents=True, exist_ok=True)
-    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
+    device = pick_device(args.device)
     print(f"Device: {device}  Model: {args.model}  Max frames: {args.max_frames}")
     print(f"Input: {frames_root}\nOutput: {out_dir}")
 
-    events = scan_events(frames_root)
+    games = load_manifest(repo_path(cfg, "manifest"))
+    wanted = {g.game_num for g in games}
+    events = {k: v for k, v in scan_events(frames_root).items() if k[0] in wanted}
     if not events:
         raise SystemExit(f"No frames found under {frames_root}")
     n_per = [len(v) for v in events.values()]
     print(f"Found {len(events)} events across {len({k[2] for k in events})} labels; "
           f"frames per event min={min(n_per)} max={max(n_per)} mean={np.mean(n_per):.1f}")
 
-    encoder = build_encoder(args.model, device)
-    padded, masks, keys, n_frames = encode_events(encoder, events, args.max_frames, args.batch_size)
-    games = load_manifest(repo_path(cfg, "manifest"))
+    padded, masks, keys, n_frames, reused, encoded = encode_cached(
+        lambda: build_encoder(args.model, device), events, args.max_frames, args.batch_size,
+        out_dir / "cache", {"model": args.model, "max_frames": args.max_frames})
+    print(f"Game halves: {reused} reused from cache, {encoded} encoded")
     df = save_outputs(out_dir, padded, masks, keys, n_frames, games)
     (out_dir / "run_info.json").write_text(json.dumps({
         "model": args.model, "frames_root": str(frames_root), "max_frames": args.max_frames,

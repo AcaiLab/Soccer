@@ -32,9 +32,10 @@ import torch.nn as nn
 from sklearn.metrics import classification_report
 
 from soccer.config import data_path, dropped_labels, load_config, repo_path
+from soccer.encoding import pick_device
 from soccer.evaluation import split_by_game
 from soccer.features import load_temporal
-from soccer.manifest import load_manifest
+from soccer.manifest import load_manifest, manifest_games
 from soccer.metrics import bootstrap_ci, classification_scores
 
 
@@ -112,14 +113,14 @@ def main(argv=None):
     parser.add_argument("--hidden-dim", type=int, default=256)
     parser.add_argument("--seeds", type=int, nargs="+", default=[cfg["seed"]])
     parser.add_argument("--keep-all-labels", action="store_true")
-    parser.add_argument("--device", default=None)
+    parser.add_argument("--device", default="auto", help="cuda / cpu / auto (GPU only if it has free memory)")
     args = parser.parse_args(argv)
 
-    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
+    device = pick_device(args.device)
     out_dir = pathlib.Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    tf = load_temporal(args.features)
+    tf = load_temporal(args.features, games=manifest_games(cfg))
     if not args.keep_all_labels:
         tf = tf.drop_labels(dropped_labels(cfg))
     split = split_by_game(tf.games, tf.labels, load_manifest(repo_path(cfg, "manifest")),

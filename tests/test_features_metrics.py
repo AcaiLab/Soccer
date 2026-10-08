@@ -98,3 +98,12 @@ def test_bootstrap_ci_resamples_whole_games():
     # A single game: no between-game variation, so the interval collapses.
     one = bootstrap_ci(y_true[25:50], y_pred[25:50], games[25:50], n_boot=50)
     assert one["Accuracy_CI"] == (1.0, 1.0)
+
+
+def test_load_temporal_can_keep_only_manifest_games(tmp_path):
+    feats, masks = padded()
+    np.savez_compressed(tmp_path / "clip_temporal_padded.npz", features=feats, masks=masks,
+                        labels=np.array(["corner", "goal"]), games=np.array(["01", "31"]),
+                        halves=np.array(["1", "1"]), event_tags=np.array(["00-10.000", "00-20.000"]))
+    tf = load_temporal(tmp_path, games=["1"])
+    assert list(tf.games) == ["01"] and tf.features.shape[0] == 1

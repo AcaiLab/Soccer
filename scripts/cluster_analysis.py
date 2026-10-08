@@ -3,7 +3,7 @@ K-Means + t-SNE Analysis of Soccer Event Embeddings
 ====================================================
 Representations analysed:
 
-  (A) Individual frames  - one embedding per frame (needs extract_frame_features.py output)
+  (A) Individual frames  - one embedding per frame (taken from the per-event features)
   (B) Event mean-pool    - mask-aware mean over each event's frames
   (C) Event concat+PCA   - all frames of an event concatenated, reduced with PCA
   (F) Per-game centred   - (B) with each game's mean subtracted
@@ -46,7 +46,10 @@ from sklearn.metrics import silhouette_score  # noqa: E402
 
 from soccer.config import data_path, dropped_labels, load_config  # noqa: E402
 from soccer.features import center_per_group, l2_normalize, load_temporal, mean_pool  # noqa: E402
-from soccer.manifest import normalize_game_id  # noqa: E402
+from soccer.manifest import (
+    manifest_games,  # noqa: E402
+    normalize_game_id,  # noqa: E402
+)
 from soccer.metrics import clustering_scores, game_vs_event_scores  # noqa: E402
 
 N_TSNE_SAMPLE = 3000  # individual frames are subsampled for t-SNE (speed)
@@ -144,7 +147,9 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="K-Means + t-SNE clustering of soccer event embeddings.")
     parser.add_argument("--model", default=model, help="selects the default feature and output folders")
     parser.add_argument("--features-dir", default=None, help="default: features/temporal_<model name>")
-    parser.add_argument("--flat-features", default=None, help="default: features/<model name>_flat/<model name>_features.npy")
+    parser.add_argument("--flat-features", default=None,
+                        help="per-frame features from extract_frame_features.py (default: the frames inside "
+                             "the per-event features, so no second encoding pass is needed)")
     parser.add_argument("--flat-meta", default=None, help="default: metadata.csv next to --flat-features")
     parser.add_argument("--out-dir", default=None, help="default: results/<model name>")
     parser.add_argument("--keep-all-labels", action="store_true", help="do not drop junk / non-visual labels")
@@ -153,30 +158,34 @@ def main(argv=None):
     prefix = args.model.split("/")[-1]
     features_root = data_path(cfg, "features")
     features_dir = pathlib.Path(args.features_dir or features_root / f"temporal_{prefix}")
-    flat_path = pathlib.Path(args.flat_features or features_root / f"{prefix}_flat" / f"{prefix}_features.npy")
-    meta_path = pathlib.Path(args.flat_meta or flat_path.with_name("metadata.csv"))
+    flat_path = pathlib.Path(args.flat_features) if args.flat_features else None
+    meta_path = pathlib.Path(args.flat_meta) if args.flat_meta else (flat_path.with_name("metadata.csv")
+                                                                       if flat_path else None)
     out_dir = pathlib.Path(args.out_dir or data_path(cfg, "results") / prefix)
     out_dir.mkdir(parents=True, exist_ok=True)
     seed = cfg["seed"]
     drop = set() if args.keep_all_labels else dropped_labels(cfg)
 
-    tf = load_temporal(features_dir)
+    tf = load_temporal(features_dir, games=manifest_games(cfg))
     n_before = len(tf)
     tf = tf.drop_labels(drop)
     print(f"Events: {len(tf)} ({n_before - len(tf)} with dropped labels removed), "
           f"games: {len(set(tf.games))}, frames tensor {tf.features.shape}")
 
-    have_flat = flat_path.is_file() and meta_path.is_file()
-    if have_flat:
+    have_flat = True
+    if args.flat_features:
+        # Per-frame features from extract_frame_features.py (e.g. another model's).
         flat = np.load(flat_path)
         meta = pd.read_csv(meta_path, dtype={"game": str})
         flat_labels = meta["label"].astype(str).values
         flat_games = np.array([normalize_game_id(g) for g in meta["game"]])
-        keep = ~np.isin(flat_labels, list(drop))
+        keep = ~np.isin(flat_labels, list(drop)) & np.isin(flat_games, manifest_games(cfg))
         flat, flat_labels, flat_games = flat[keep], flat_labels[keep], flat_games[keep]
     else:
-        print(f"No per-frame features at {flat_path}; skipping (A). Run extract_frame_features.py to add it.")
-        flat_labels = np.array([], dtype=str)
+        # The per-event tensors already hold every frame's embedding: no second encoding pass.
+        flat = tf.features[tf.masks]
+        n_valid = tf.masks.sum(axis=1)
+        flat_labels, flat_games = np.repeat(tf.labels, n_valid), np.repeat(tf.games, n_valid)
 
     a = Analysis(np.concatenate([tf.labels, flat_labels]), out_dir, prefix, seed)
     true_ids = a.ids(tf.labels)
