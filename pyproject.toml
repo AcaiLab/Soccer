@@ -25,7 +25,3 @@ extend-exclude = [".venv", "data", "features", "results_by_label_epl_2021_2022"]
 # pyflakes, pycodestyle errors, import sorting, common bug patterns
 select = ["F", "E", "I", "B"]
 ignore = ["E501"]
-
-[tool.ruff.lint.per-file-ignores]
-# Scripts named with a hyphen are not importable; keep them out of import sorting rules.
-"soccerProjNewCode-1.py" = ["I"]

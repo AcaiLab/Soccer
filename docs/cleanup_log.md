@@ -99,3 +99,17 @@ These now only call the script that replaced them, so existing commands keep wor
 | files removed | files moved | files added | tracked files |
 |---|---|---|---|
 | 0 | 0 | 28 | 142 (after the leak-audit and log updates) |
+
+## Phase 4b: approved removals and moves (2026-10-07)
+
+Approved by Hasset Admasu on 2026-10-07 ("make all the changes").
+
+### Commit: remove superseded scripts
+
+| path | size | type | reason | confidence | recoverable? |
+|---|---|---|---|---|---|
+| `process_10_games.py` | 0.5 KB | code | forwarder; `batch_pipeline.py --local-only --games 01 ... 10` replaces it | high | yes, in git history |
+| `process_new_games.py` | 1.3 KB | code | forwarder; `batch_pipeline.py --local-only --games ...` replaces it | high | yes, in git history |
+| `clip_feature_extraction.py` | 0.7 KB | code | forwarder; `extract_frame_features.py --model openai/clip-vit-base-patch32` replaces it | high | yes, in git history |
+| `fast_batch_pipeline.py` | 4.6 KB | code | duplicates `batch_pipeline.py`; its queue file is replaced by `configs/games.csv` | medium | yes, in git history |
+| `soccerProjNewCode-1.py` | 9.0 KB | code | superseded by `soccer/extract.py`; hyphenated name not importable | medium | yes, in git history and on `main` |
