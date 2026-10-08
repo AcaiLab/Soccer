@@ -2,7 +2,8 @@
 Post-Contrastive Clustering Evaluation
 =======================================
 Compares K-Means + t-SNE on the projected embeddings with the original DINOv2
-mean-pooled embeddings, separately for:
+mean-pooled embeddings, scored against event labels and against game identity
+(Game_ARI: the match signal the head is meant to remove), separately for:
 
   held-out games - games the head never saw; the result that counts
   train games    - games whose labels the head was trained on; shows fit only
@@ -36,13 +37,15 @@ from sklearn.metrics import silhouette_score  # noqa: E402
 from soccer.config import data_path, dropped_labels, load_config  # noqa: E402
 from soccer.features import load_temporal, mean_pool  # noqa: E402
 from soccer.manifest import manifest_games  # noqa: E402
-from soccer.metrics import clustering_scores  # noqa: E402
+from soccer.metrics import clustering_scores, game_vs_event_scores  # noqa: E402
 
 
-def score(features, labels, seed):
+def score(features, labels, games, seed):
+    """K-Means with k = number of labels; agreement with event labels and with game identity."""
     k = len(set(labels))
     cluster_ids = KMeans(n_clusters=k, random_state=seed, n_init=15).fit_predict(features)
     return cluster_ids, {**clustering_scores(labels, cluster_ids, seed=seed),
+                         **game_vs_event_scores(labels, games, cluster_ids),
                          "Silhouette": silhouette_score(features, cluster_ids,
                                                         sample_size=min(2000, len(features)),
                                                         random_state=seed)}
@@ -108,11 +111,12 @@ def main(argv=None):
     for group, m in groups.items():
         print(f"\n[{group}] {m.sum()} events from {len(set(tf.games[m]))} games")
         for rep, feats in [("DINOv2 (before)", before), ("Contrastive (after)", after)]:
-            cluster_ids, metrics = score(feats[m], tf.labels[m], seed)
+            cluster_ids, metrics = score(feats[m], tf.labels[m], tf.games[m], seed)
             cache[(group, rep)] = cluster_ids
             rows.append({"Group": group, "Representation": rep, "Events": int(m.sum()), **metrics})
             print(f"  {rep:<20s} ARI={metrics['ARI']:.3f}  Purity={metrics['Purity']:.3f} "
-                  f"(random {metrics['Purity_random']:.3f})  Silhouette={metrics['Silhouette']:.3f}")
+                  f"(random {metrics['Purity_random']:.3f})  Game_ARI={metrics['Game_ARI']:.3f}  "
+                  f"Silhouette={metrics['Silhouette']:.3f}")
     metrics_df = pd.DataFrame(rows)
     metrics_df.to_csv(out_dir / "contrastive_metrics.csv", index=False)
 

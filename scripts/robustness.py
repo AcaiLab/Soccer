@@ -102,6 +102,9 @@ def main(argv=None):
                       ("before" if "before" in r["Representation"] else "after")
                 rows.append({"split": split, "seed": seed, "metric": f"contrastive_{tag}_ARI", "value": r["ARI"]})
                 rows.append({"split": split, "seed": seed, "metric": f"contrastive_{tag}_purity", "value": r["Purity"]})
+                if "Game_ARI" in r:  # match signal left in the embedding
+                    rows.append({"split": split, "seed": seed, "metric": f"contrastive_{tag}_GameARI",
+                                 "value": r["Game_ARI"]})
             step("event_classification.py", ["--contrastive-features", head, "--seed", seed,
                                               "--out-dir", out / f"pooled_s{seed}"],
                  manifest, out / f"pooled_s{seed}" / "classification_report.txt")

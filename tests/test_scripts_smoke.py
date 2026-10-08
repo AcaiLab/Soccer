@@ -143,6 +143,7 @@ def test_contrastive_train_then_evaluate(data):
                                "--out-dir", str(out)])
     metrics = pd.read_csv(out / "contrastive_metrics.csv")
     assert set(metrics["Group"]) == {"held-out games", "train games"}
+    assert {"Game_ARI", "Game_NMI", "ARI"} <= set(metrics.columns)
 
 
 def test_contrastive_refuses_test_games(data):
