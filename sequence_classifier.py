@@ -7,14 +7,15 @@ consume the full (60, 768) sequence, using temporal ordering:
     1. MeanPool-MLP  : masked mean over frames -> MLP        (baseline)
     2. BiLSTM        : bidirectional LSTM -> masked mean of hidden states
     3. TemporalCNN   : stacked 1D convolutions over time -> masked mean
+    4. Transformer   : self-attention over time with a padding mask
 
-Protocol (leak-free, by game):
-    train = games 01-20,  val = games 21-24 (early stopping),  test = 25-30
+Protocol (leak-free, by game, from the manifest):
+    train games fit the weights, val games pick the stopping epoch and the
+    model, and only the chosen model is scored on the test games.
+Per-dimension standardisation uses training frames only.
 
 Usage:
-    python sequence_classifier.py \
-        --features features/temporal_dinov2-base_30games/clip_temporal_padded.npz \
-        --out-dir clustering/classification
+    python sequence_classifier.py
 """
 
 import argparse
@@ -24,86 +25,31 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
-from sklearn.metrics import accuracy_score, classification_report
+from sklearn.metrics import classification_report
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--features",
-                    default="features/temporal_dinov2-base_30games/clip_temporal_padded.npz")
-parser.add_argument("--out-dir", default="clustering/classification")
-parser.add_argument("--val-games", nargs="+", default=["21", "22", "23", "24"])
-parser.add_argument("--test-games", nargs="+", default=["25", "26", "27", "28", "29", "30"])
-parser.add_argument("--epochs", type=int, default=100)
-parser.add_argument("--patience", type=int, default=15)
-parser.add_argument("--lr", type=float, default=3e-4)
-parser.add_argument("--batch-size", type=int, default=64)
-parser.add_argument("--hidden-dim", type=int, default=256)
-parser.add_argument("--seed", type=int, default=42)
-parser.add_argument("--device", default=None)
-args = parser.parse_args()
-
-torch.manual_seed(args.seed)
-np.random.seed(args.seed)
-device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
-out_dir = pathlib.Path(args.out_dir)
-out_dir.mkdir(parents=True, exist_ok=True)
-
-# ---------------------------------------------------------------------------
-# Data
-# ---------------------------------------------------------------------------
-npz = np.load(args.features, allow_pickle=True)
-feats = npz["features"].astype(np.float32)   # (N, T, D)
-masks = npz["masks"].astype(np.float32)      # (N, T)
-labels = npz["labels"].astype(str)
-games = npz["games"].astype(str)
-
-classes = sorted(set(labels))
-cls_to_idx = {c: i for i, c in enumerate(classes)}
-y = np.array([cls_to_idx[l] for l in labels])
-
-val_set, test_set = set(args.val_games), set(args.test_games)
-tr = np.array([g not in val_set and g not in test_set for g in games])
-va = np.array([g in val_set for g in games])
-te = np.array([g in test_set for g in games])
-print(f"Events: train={tr.sum()}  val={va.sum()}  test={te.sum()}  "
-      f"classes={len(classes)}  dim={feats.shape[2]}")
-
-# Standardize per-dim using train frames only (valid frames)
-train_frames = feats[tr][masks[tr].astype(bool)]
-mu, sd = train_frames.mean(0), train_frames.std(0) + 1e-6
-feats = (feats - mu) / sd
-feats *= masks[:, :, None]  # keep padding at zero
-
-X = torch.tensor(feats)
-M = torch.tensor(masks)
-Y = torch.tensor(y, dtype=torch.long)
+from soccer.config import data_path, dropped_labels, load_config, repo_path
+from soccer.evaluation import split_by_game
+from soccer.features import load_temporal
+from soccer.manifest import load_manifest
+from soccer.metrics import classification_scores
 
 
-def loader(idx_mask, shuffle):
-    ds = torch.utils.data.TensorDataset(X[idx_mask], M[idx_mask], Y[idx_mask])
-    return torch.utils.data.DataLoader(ds, batch_size=args.batch_size, shuffle=shuffle)
-
-
-# ---------------------------------------------------------------------------
-# Models
-# ---------------------------------------------------------------------------
 def masked_mean(h, m):
     """h: (B, T, D), m: (B, T) -> (B, D)"""
     return (h * m.unsqueeze(-1)).sum(1) / m.sum(1, keepdim=True).clamp(min=1)
 
 
 class MeanPoolMLP(nn.Module):
-    def __init__(self, d_in, d_h, n_cls):
+    def __init__(self, d_in, d_h, n_cls, max_len):
         super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(d_in, d_h), nn.ReLU(), nn.Dropout(0.3),
-            nn.Linear(d_h, n_cls))
+        self.net = nn.Sequential(nn.Linear(d_in, d_h), nn.ReLU(), nn.Dropout(0.3), nn.Linear(d_h, n_cls))
 
     def forward(self, x, m):
         return self.net(masked_mean(x, m))
 
 
 class BiLSTM(nn.Module):
-    def __init__(self, d_in, d_h, n_cls):
+    def __init__(self, d_in, d_h, n_cls, max_len):
         super().__init__()
         self.proj = nn.Linear(d_in, d_h)
         self.lstm = nn.LSTM(d_h, d_h, batch_first=True, bidirectional=True)
@@ -115,7 +61,7 @@ class BiLSTM(nn.Module):
 
 
 class TemporalCNN(nn.Module):
-    def __init__(self, d_in, d_h, n_cls):
+    def __init__(self, d_in, d_h, n_cls, max_len):
         super().__init__()
         self.conv = nn.Sequential(
             nn.Conv1d(d_in, d_h, 5, padding=2), nn.ReLU(), nn.Dropout(0.3),
@@ -128,91 +74,121 @@ class TemporalCNN(nn.Module):
 
 
 class TransformerClassifier(nn.Module):
-    def __init__(self, d_in, d_h, n_cls, n_heads=4, n_layers=2, max_len=60):
+    def __init__(self, d_in, d_h, n_cls, max_len, n_heads=4, n_layers=2):
         super().__init__()
         self.proj = nn.Linear(d_in, d_h)
         self.pos = nn.Parameter(torch.randn(1, max_len, d_h) * 0.02)
-        enc_layer = nn.TransformerEncoderLayer(
-            d_model=d_h, nhead=n_heads, dim_feedforward=d_h * 4,
-            dropout=0.3, activation="gelu", batch_first=True)
-        self.encoder = nn.TransformerEncoder(enc_layer, num_layers=n_layers)
+        layer = nn.TransformerEncoderLayer(d_model=d_h, nhead=n_heads, dim_feedforward=d_h * 4,
+                                           dropout=0.3, activation="gelu", batch_first=True)
+        self.encoder = nn.TransformerEncoder(layer, num_layers=n_layers)
         self.head = nn.Sequential(nn.Dropout(0.3), nn.Linear(d_h, n_cls))
 
     def forward(self, x, m):
         h = self.proj(x) + self.pos[:, :x.size(1)]
-        pad_mask = ~m.bool()  # True = ignore
-        h = self.encoder(h, src_key_padding_mask=pad_mask)
+        h = self.encoder(h, src_key_padding_mask=~m.bool())
         return self.head(masked_mean(h, m))
 
 
-# ---------------------------------------------------------------------------
-# Train / eval
-# ---------------------------------------------------------------------------
-def run_model(name, model):
-    model = model.to(device)
-    opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
-    crit = nn.CrossEntropyLoss()
-    tr_loader = loader(tr, shuffle=True)
-    best_val, best_state, wait = 0.0, None, 0
+MODELS = {"MeanPool-MLP": MeanPoolMLP, "BiLSTM": BiLSTM, "TemporalCNN": TemporalCNN,
+          "Transformer": TransformerClassifier}
 
-    for epoch in range(1, args.epochs + 1):
-        model.train()
-        for xb, mb, yb in tr_loader:
-            xb, mb, yb = xb.to(device), mb.to(device), yb.to(device)
-            opt.zero_grad()
-            crit(model(xb, mb), yb).backward()
-            opt.step()
 
+def main(argv=None):
+    cfg = load_config()
+    prefix = cfg["features"]["model"].split("/")[-1]
+    parser = argparse.ArgumentParser(description="Sequence classifiers over per-frame features.")
+    parser.add_argument("--features", default=str(data_path(cfg, "features") / f"temporal_{prefix}"))
+    parser.add_argument("--out-dir", default=str(data_path(cfg, "results") / "classification"))
+    parser.add_argument("--val-games", nargs="+", default=None, help="default: manifest val split")
+    parser.add_argument("--test-games", nargs="+", default=None, help="default: manifest test split")
+    parser.add_argument("--epochs", type=int, default=100)
+    parser.add_argument("--patience", type=int, default=15)
+    parser.add_argument("--lr", type=float, default=3e-4)
+    parser.add_argument("--batch-size", type=int, default=64)
+    parser.add_argument("--hidden-dim", type=int, default=256)
+    parser.add_argument("--seed", type=int, default=cfg["seed"])
+    parser.add_argument("--keep-all-labels", action="store_true")
+    parser.add_argument("--device", default=None)
+    args = parser.parse_args(argv)
+
+    torch.manual_seed(args.seed)
+    np.random.seed(args.seed)
+    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
+    out_dir = pathlib.Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    tf = load_temporal(args.features)
+    if not args.keep_all_labels:
+        tf = tf.drop_labels(dropped_labels(cfg))
+    split = split_by_game(tf.games, tf.labels, load_manifest(repo_path(cfg, "manifest")),
+                          args.val_games, args.test_games)
+    classes = sorted(set(tf.labels[split.train]))
+    cls_idx = {c: i for i, c in enumerate(classes)}
+    keep = split.train | split.val | split.test
+    y = np.array([cls_idx.get(label, -1) for label in tf.labels])
+    print(f"Events: train={split.train.sum()} val={split.val.sum()} test={split.test.sum()}  "
+          f"classes={len(classes)}  dim={tf.features.shape[2]}")
+
+    masks = tf.masks.astype(np.float32)
+    train_frames = tf.features[split.train][tf.masks[split.train]]
+    mu, sd = train_frames.mean(0), train_frames.std(0) + 1e-6
+    feats = ((tf.features - mu) / sd) * masks[:, :, None]  # keep padding at zero
+    X, M, Y = torch.tensor(feats), torch.tensor(masks), torch.tensor(y, dtype=torch.long)
+
+    def loader(mask, shuffle):
+        ds = torch.utils.data.TensorDataset(X[mask & keep], M[mask & keep], Y[mask & keep])
+        return torch.utils.data.DataLoader(ds, batch_size=args.batch_size, shuffle=shuffle,
+                                           generator=torch.Generator().manual_seed(args.seed))
+
+    def predict(model, mask):
         model.eval()
         with torch.no_grad():
-            preds = []
-            for xb, mb, _ in loader(va, shuffle=False):
-                preds.append(model(xb.to(device), mb.to(device)).argmax(1).cpu())
-            val_acc = accuracy_score(y[va], torch.cat(preds).numpy())
+            return torch.cat([model(xb.to(device), mb.to(device)).argmax(1).cpu()
+                              for xb, mb, _ in loader(mask, False)]).numpy()
 
-        if val_acc > best_val:
-            best_val, wait = val_acc, 0
-            best_state = {k: v.clone() for k, v in model.state_dict().items()}
-        else:
-            wait += 1
-            if wait >= args.patience:
-                break
+    results = {}
+    for name, cls in MODELS.items():
+        torch.manual_seed(args.seed)
+        model = cls(tf.features.shape[2], args.hidden_dim, len(classes), tf.features.shape[1]).to(device)
+        opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
+        crit = nn.CrossEntropyLoss()
+        best_val, best_state, wait, stopped = -1.0, None, 0, 0
+        for epoch in range(1, args.epochs + 1):
+            stopped = epoch
+            model.train()
+            for xb, mb, yb in loader(split.train, True):
+                opt.zero_grad()
+                crit(model(xb.to(device), mb.to(device)), yb.to(device)).backward()
+                opt.step()
+            val_acc = float(np.mean(predict(model, split.val) == y[split.val & keep]))
+            if val_acc > best_val:
+                best_val, wait = val_acc, 0
+                best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
+            else:
+                wait += 1
+                if wait >= args.patience:
+                    break
+        model.load_state_dict(best_state)
+        results[name] = {"model": model, "val_acc": best_val, "stopped": stopped}
+        print(f"{name:14s} stopped@{stopped:3d}  best val accuracy={best_val:.1%}")
 
-    model.load_state_dict(best_state)
-    model.eval()
-    with torch.no_grad():
-        preds = []
-        for xb, mb, _ in loader(te, shuffle=False):
-            preds.append(model(xb.to(device), mb.to(device)).argmax(1).cpu())
-        test_pred = torch.cat(preds).numpy()
-    test_acc = accuracy_score(y[te], test_pred)
-    print(f"{name:14s} stopped@{epoch:3d}  val={best_val:.1%}  test={test_acc:.1%}")
-    return best_val, test_acc, test_pred
+    chosen = max(results, key=lambda n: results[n]["val_acc"])
+    test_pred = predict(results[chosen]["model"], split.test)
+    y_test, y_train = y[split.test & keep], y[split.train & keep]
+    scores = classification_scores(y_test, test_pred, y_train)
+
+    pd.DataFrame([{"model": n, "val_acc": r["val_acc"], "stopped_epoch": r["stopped"]}
+                  for n, r in results.items()]).sort_values("val_acc", ascending=False).to_csv(
+        out_dir / "sequence_results.csv", index=False)
+    summary = (f"Chosen on validation: {chosen}\nTest games: {' '.join(split.test_games)}  ({len(y_test)} events)\n"
+               f"Test accuracy {scores['Accuracy']:.4f}  macro-F1 {scores['Macro_F1']:.4f}  "
+               f"majority-class baseline {scores['Majority_baseline']:.4f}\n")
+    present = sorted(set(y_test) | set(test_pred))
+    report = classification_report(y_test, test_pred, labels=present,
+                                   target_names=[classes[i] for i in present], zero_division=0)
+    (out_dir / "sequence_classification_report.txt").write_text(summary + "\n" + report)
+    print("\n" + summary + "\n" + report)
 
 
-d_in, n_cls = feats.shape[2], len(classes)
-results = {}
-for name, model in [
-    ("MeanPool-MLP",  MeanPoolMLP(d_in, args.hidden_dim, n_cls)),
-    ("BiLSTM",        BiLSTM(d_in, args.hidden_dim, n_cls)),
-    ("TemporalCNN",   TemporalCNN(d_in, args.hidden_dim, n_cls)),
-    ("Transformer",   TransformerClassifier(d_in, args.hidden_dim, n_cls)),
-]:
-    results[name] = run_model(name, model)
-
-# ---------------------------------------------------------------------------
-# Save
-# ---------------------------------------------------------------------------
-rows = [{"model": k, "val_acc": v[0], "test_acc": v[1]} for k, v in results.items()]
-df = pd.DataFrame(rows).sort_values("test_acc", ascending=False)
-df.to_csv(out_dir / "sequence_results.csv", index=False)
-print("\n" + df.to_string(index=False))
-
-best_name = df.iloc[0]["model"]
-best_pred = results[best_name][2]
-report = classification_report(
-    y[te], best_pred, labels=range(n_cls), target_names=classes, zero_division=0)
-(out_dir / "sequence_classification_report.txt").write_text(
-    f"Best model: {best_name}\n\n{report}")
-print(f"\nPer-class report (best: {best_name}):\n{report}")
-print(f"Saved -> {out_dir / 'sequence_results.csv'}")
+if __name__ == "__main__":
+    main()
