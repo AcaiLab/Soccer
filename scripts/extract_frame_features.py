@@ -24,7 +24,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from soccer.config import data_path, load_config
-from soccer.encoding import load_safe
+from soccer.encoding import load_safe, pick_device
 from soccer.frames import scan_events
 
 
@@ -43,13 +43,11 @@ def main(argv=None):
     parser.add_argument("--device", default=None)
     args = parser.parse_args(argv)
 
-    import torch
-
     from soccer.encoders import build_encoder
 
     out_dir = pathlib.Path(args.out or flat_output_dir(cfg, args.model))
     out_dir.mkdir(parents=True, exist_ok=True)
-    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
+    device = pick_device(args.device)
     prefix = args.model.split("/")[-1]
 
     records = [{"game": g, "half": h, "label": label, "filepath": path}

@@ -125,7 +125,11 @@ def pick_device(requested: str | None, min_free_gb: float = 4.0) -> str:
 
     if not torch.cuda.is_available():
         return "cpu"
-    free = torch.cuda.mem_get_info()[0] / 1e9
+    try:
+        free = torch.cuda.mem_get_info()[0] / 1e9
+    except RuntimeError as e:  # a GPU that is completely full cannot even create a CUDA context
+        print(f"GPU unusable ({str(e).splitlines()[0]}); using the CPU", flush=True)
+        return "cpu"
     if free < min_free_gb:
         print(f"GPU has only {free:.1f} GB free (another job?); using the CPU", flush=True)
         return "cpu"

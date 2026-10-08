@@ -22,7 +22,7 @@ import tempfile
 import numpy as np
 
 from soccer.config import data_path, load_config, repo_path
-from soccer.encoding import encode_events, save_outputs
+from soccer.encoding import encode_events, pick_device, save_outputs
 from soccer.frames import parse_half_dir, scan_events
 from soccer.manifest import load_manifest
 from soccer.storage import download_prefix, list_subdirs
@@ -41,15 +41,13 @@ def main(argv=None):
     parser.add_argument("--tmp-dir", default=None, help="scratch space (default: system temp)")
     args = parser.parse_args(argv)
 
-    import torch
-
     from soccer.encoders import build_encoder
 
     out_dir = pathlib.Path(args.out or data_path(cfg, "features") / f"temporal_{args.model.split('/')[-1]}_s3")
     parts_dir = out_dir / "parts"
     parts_dir.mkdir(parents=True, exist_ok=True)
     tmp_root = pathlib.Path(args.tmp_dir or tempfile.gettempdir()) / "soccer_frames"
-    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
+    device = pick_device(args.device)
 
     progress_file = out_dir / "s3_progress.json"
     done = set(json.loads(progress_file.read_text())["done"]) if progress_file.exists() else set()
