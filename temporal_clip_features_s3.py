@@ -22,9 +22,10 @@ import tempfile
 import numpy as np
 
 from soccer.config import data_path, load_config, repo_path
+from soccer.frames import parse_half_dir, scan_events
 from soccer.manifest import load_manifest
 from soccer.storage import download_prefix, list_subdirs
-from temporal_clip_features import encode_events, parse_half_dir, save_outputs, scan_events
+from temporal_clip_features import encode_events, save_outputs
 
 
 def main(argv=None):

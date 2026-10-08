@@ -24,7 +24,8 @@ import pandas as pd
 from tqdm import tqdm
 
 from soccer.config import data_path, load_config
-from temporal_clip_features import load_safe, scan_events
+from soccer.frames import scan_events
+from temporal_clip_features import load_safe
 
 
 def flat_output_dir(cfg: dict, model: str) -> pathlib.Path:
