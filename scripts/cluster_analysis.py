@@ -8,10 +8,12 @@ Representations analysed:
   (C) Event concat+PCA   - all frames of an event concatenated, reduced with PCA
   (F) Per-game centred   - (B) with each game's mean subtracted
 
-For each: K-Means with k = number of event labels, scored with purity (next to
-its shuffled-cluster baseline), ARI and silhouette, plus t-SNE maps coloured by
+For each: K-Means with k = number of event labels, scored against the event
+labels (purity next to its shuffled-cluster baseline, ARI, NMI) and against
+game identity (Game_ARI, Game_NMI), plus silhouette and t-SNE maps coloured by
 label, k-means cluster, game and half. ARI is the number to lead with: it is
-already corrected for chance, purity is not.
+already corrected for chance, purity is not. Game_ARI well above ARI means the
+clusters follow the match more than the event.
 
 Junk and non-visual labels (configs/pipeline.yaml) are dropped first.
 
@@ -44,7 +46,8 @@ from sklearn.metrics import silhouette_score  # noqa: E402
 
 from soccer.config import data_path, dropped_labels, load_config  # noqa: E402
 from soccer.features import center_per_group, l2_normalize, load_temporal, mean_pool  # noqa: E402
-from soccer.metrics import clustering_scores  # noqa: E402
+from soccer.manifest import normalize_game_id  # noqa: E402
+from soccer.metrics import clustering_scores, game_vs_event_scores  # noqa: E402
 
 N_TSNE_SAMPLE = 3000  # individual frames are subsampled for t-SNE (speed)
 
@@ -74,10 +77,11 @@ class Analysis:
     def ids(self, labels):
         return np.array([self.idx[x] for x in labels])
 
-    def kmeans(self, features, labels, tag):
+    def kmeans(self, features, labels, tag, games):
         print(f"\n[K-Means] {tag}  n={len(features)}  k={self.k}")
         cluster_ids = KMeans(n_clusters=self.k, random_state=self.seed, n_init=15).fit_predict(features)
         row = {"Representation": tag, **clustering_scores(labels, cluster_ids, seed=self.seed),
+               **game_vs_event_scores(labels, games, cluster_ids),
                "Silhouette": silhouette_score(features, cluster_ids, sample_size=min(2000, len(features)),
                                               random_state=self.seed)}
         print("  " + "  ".join(f"{k}={v:.3f}" for k, v in row.items() if k != "Representation"))
@@ -165,9 +169,11 @@ def main(argv=None):
     have_flat = flat_path.is_file() and meta_path.is_file()
     if have_flat:
         flat = np.load(flat_path)
-        flat_labels = pd.read_csv(meta_path)["label"].astype(str).values
+        meta = pd.read_csv(meta_path, dtype={"game": str})
+        flat_labels = meta["label"].astype(str).values
+        flat_games = np.array([normalize_game_id(g) for g in meta["game"]])
         keep = ~np.isin(flat_labels, list(drop))
-        flat, flat_labels = flat[keep], flat_labels[keep]
+        flat, flat_labels, flat_games = flat[keep], flat_labels[keep], flat_games[keep]
     else:
         print(f"No per-frame features at {flat_path}; skipping (A). Run extract_frame_features.py to add it.")
         flat_labels = np.array([], dtype=str)
@@ -177,14 +183,14 @@ def main(argv=None):
 
     # (A) individual frames
     if have_flat:
-        cluster_A, row = a.kmeans(flat, flat_labels, "Individual frames")
+        cluster_A, row = a.kmeans(flat, flat_labels, "Individual frames", flat_games)
         idx = np.random.default_rng(seed).choice(len(flat), size=min(N_TSNE_SAMPLE, len(flat)), replace=False)
         a.label_vs_cluster(a.tsne(flat[idx]), a.ids(flat_labels[idx]), cluster_A[idx],
                            a.title("A", "Individual Frames", len(flat), row), "A_individual_frames.png")
 
     # (B) event mean-pool
     feat_mean = mean_pool(tf.features, tf.masks)
-    cluster_B, row = a.kmeans(feat_mean, tf.labels, "Event mean-pool")
+    cluster_B, row = a.kmeans(feat_mean, tf.labels, "Event mean-pool", tf.games)
     tsne_B = a.tsne(feat_mean)
     a.label_vs_cluster(tsne_B, true_ids, cluster_B, a.title("B", "Event Mean-Pool", len(tf), row),
                        "B_event_meanpool.png")
@@ -195,7 +201,7 @@ def main(argv=None):
     pca = PCA(n_components=n_comp, random_state=seed, svd_solver="randomized")
     feat_pca = l2_normalize(pca.fit_transform(flat_events))
     print(f"  PCA to {n_comp} dims, variance explained {pca.explained_variance_ratio_.sum():.1%}")
-    cluster_C, row = a.kmeans(feat_pca, tf.labels, "Event concat+PCA")
+    cluster_C, row = a.kmeans(feat_pca, tf.labels, "Event concat+PCA", tf.games)
     a.label_vs_cluster(a.tsne(feat_pca), true_ids, cluster_C,
                        a.title("C", f"Event Concat + PCA ({n_comp})", len(tf), row), "C_event_concat_pca.png")
 
@@ -216,7 +222,7 @@ def main(argv=None):
 
     # (F) per-game centring
     feat_centred = center_per_group(feat_mean, tf.games)
-    cluster_F, row = a.kmeans(feat_centred, tf.labels, "Normalized mean-pool")
+    cluster_F, row = a.kmeans(feat_centred, tf.labels, "Normalized mean-pool", tf.games)
     tsne_F = a.tsne(feat_centred)
     a.label_vs_cluster(tsne_F, true_ids, cluster_F, a.title("F", "Per-Game Centred Mean-Pool", len(tf), row),
                        "F_normalized_event_meanpool.png")

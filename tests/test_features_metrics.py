@@ -8,7 +8,13 @@ from soccer.features import (
     max_pool,
     mean_pool,
 )
-from soccer.metrics import classification_scores, cluster_purity, random_purity
+from soccer.metrics import (
+    bootstrap_ci,
+    classification_scores,
+    cluster_purity,
+    game_vs_event_scores,
+    random_purity,
+)
 
 
 def padded():
@@ -70,3 +76,25 @@ def test_classification_scores_majority_baseline():
     assert s["Accuracy"] == pytest.approx(0.75)
     assert s["Majority_baseline"] == pytest.approx(0.5)
     assert 0 < s["Macro_F1"] <= 1
+
+
+def test_game_vs_event_scores_detect_clustering_by_game():
+    games = np.repeat(["01", "02", "03"], 4)
+    labels = np.tile(["corner", "goal"], 6)
+    by_game = np.repeat([0, 1, 2], 4)  # clusters follow the match, not the event
+    s = game_vs_event_scores(labels, games, by_game)
+    assert s["Game_ARI"] == pytest.approx(1.0) and s["Game_NMI"] == pytest.approx(1.0)
+    assert s["Event_NMI"] == pytest.approx(0.0, abs=1e-9)
+
+
+def test_bootstrap_ci_resamples_whole_games():
+    games = np.repeat(["01", "02", "03", "04"], 25)
+    y_true = np.zeros(100, dtype=int)
+    y_pred = np.zeros(100, dtype=int)
+    y_pred[:25] = 1  # game 01 entirely wrong, the others entirely right
+    ci = bootstrap_ci(y_true, y_pred, games, n_boot=500, seed=0)
+    lo, hi = ci["Accuracy_CI"]
+    assert lo < 0.75 < hi and lo >= 0.0 and hi <= 1.0
+    # A single game: no between-game variation, so the interval collapses.
+    one = bootstrap_ci(y_true[25:50], y_pred[25:50], games[25:50], n_boot=50)
+    assert one["Accuracy_CI"] == (1.0, 1.0)
