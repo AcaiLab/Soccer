@@ -4,11 +4,13 @@
 # Whisper needs ffmpeg installed
 
 import argparse
+import datetime
+import json
 import os
 import sys
-import json
-import datetime
+
 import whisper
+
 
 def format_ts(seconds: float) -> str:
     """Format seconds as H:MM:SS.mmm (e.g., 0:01:23.456)."""

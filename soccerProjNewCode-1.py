@@ -1,4 +1,7 @@
-import json, re, pathlib, cv2
+import json
+import re
+import pathlib
+import cv2
 import argparse
 
 # ----------------------------
@@ -184,12 +187,12 @@ def process_match(match_folder: pathlib.Path, output_base: pathlib.Path):
 
     # Process first half
     if ts_half1_unique:
-        print(f"\n--- Processing First Half ---")
+        print("\n--- Processing First Half ---")
         process_half(video_half1_path, ts_half1_unique, half1_clips, half1_frames)
 
     # Process second half
     if ts_half2_unique:
-        print(f"\n--- Processing Second Half ---")
+        print("\n--- Processing Second Half ---")
         process_half(video_half2_path, ts_half2_unique, half2_clips, half2_frames)
     
     print(f"\nCompleted processing: {match_folder.name}")
@@ -257,6 +260,6 @@ if __name__ == "__main__":
             continue
     
     print(f"\n{'='*60}")
-    print(f"All matches processed!")
+    print("All matches processed!")
     print(f"Output saved to: {base_out}")
     print(f"{'='*60}")

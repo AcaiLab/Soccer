@@ -1,50 +1,55 @@
-from pathlib import Path
-import matplotlib.pyplot as plt
+"""Events and frames per label in the extracted frames folder.
 
-BASE = Path("extracts_first_half")
-CLIPS_ROOT = BASE / "clips"
-FRAMES_ROOT = BASE / "frames"
+Reads <frames root>/game_XX_half_N/frames/<label>/ for every game and saves a
+two-panel bar chart; useful to spot labels with few events, or events with
+fewer frames than the window should give.
 
-def count_files_in_subdirs(root: Path, exts=()):
-    counts = {}
-    if not root.exists():
-        return counts
+Usage:
+    python preprocess/plot_labels.py
+"""
 
-    for d in root.iterdir():
-        if not d.is_dir():
-            continue
-        if exts:
-            n = sum(1 for p in d.iterdir() if p.is_file() and p.suffix.lower() in exts)
-        else:
-            n = sum(1 for p in d.iterdir() if p.is_file())
-        counts[d.name] = n
-    return counts
+import argparse
+import pathlib
+from collections import Counter
 
-clip_counts = count_files_in_subdirs(CLIPS_ROOT, exts=(".mp4",))
-frame_counts = count_files_in_subdirs(FRAMES_ROOT, exts=(".png", ".jpg", ".jpeg"))
+import matplotlib
 
-labels = sorted(set(clip_counts) | set(frame_counts))
-clips = [clip_counts.get(l, 0) for l in labels]
-frames = [frame_counts.get(l, 0) for l in labels]
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt  # noqa: E402
 
-print("Label\tClips\tFrames")
-for l, c, f in zip(labels, clips, frames):
-    print(f"{l}\t{c}\t{f}")
+from soccer.config import data_path, load_config  # noqa: E402
+from soccer.frames import scan_events  # noqa: E402
 
-# clips
-plt.figure()
-plt.bar(labels, clips)
-plt.xticks(rotation=75, ha="right")
-plt.ylabel("# Clips")
-plt.title("Clips per label")
-plt.tight_layout()
-plt.show()
 
-# frames
-plt.figure()
-plt.bar(labels, frames)
-plt.xticks(rotation=75, ha="right")
-plt.ylabel("# Frames")
-plt.title("Frames per label")
-plt.tight_layout()
-plt.show()
+def main(argv=None):
+    cfg = load_config()
+    parser = argparse.ArgumentParser(description="Count events and frames per label.")
+    parser.add_argument("--frames-root", default=str(data_path(cfg, "frames")))
+    parser.add_argument("--out", default="preprocess/labels_frames.png")
+    args = parser.parse_args(argv)
+
+    events = scan_events(pathlib.Path(args.frames_root))
+    if not events:
+        raise SystemExit(f"No frames found under {args.frames_root}")
+    n_events = Counter(k[2] for k in events)
+    n_frames = Counter()
+    for k, frames in events.items():
+        n_frames[k[2]] += len(frames)
+    labels = sorted(n_events, key=n_events.get, reverse=True)
+
+    print(f"{'Label':<26s} {'Events':>7s} {'Frames':>7s} {'Frames/event':>13s}")
+    for label in labels:
+        print(f"{label:<26s} {n_events[label]:>7d} {n_frames[label]:>7d} {n_frames[label] / n_events[label]:>13.1f}")
+
+    fig, axes = plt.subplots(2, 1, figsize=(12, 9), sharex=True)
+    for ax, counts, title in [(axes[0], n_events, "Events per label"), (axes[1], n_frames, "Frames per label")]:
+        ax.bar(labels, [counts[label] for label in labels])
+        ax.set_title(title, fontweight="bold")
+    axes[1].tick_params(axis="x", rotation=75)
+    fig.tight_layout()
+    fig.savefig(args.out, dpi=150)
+    print(f"\nSaved {args.out}")
+
+
+if __name__ == "__main__":
+    main()
