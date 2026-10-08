@@ -33,12 +33,23 @@ The data is **SoccerReplay-1988** (1,988 matches, shared under an NDA; its offic
 
 ### Credentials
 
-Nothing secret is stored in the repository. The Dropbox downloader reads, in order:
+Nothing secret is stored in the repository. The Dropbox downloader needs the link (`DROPBOX_SHARED_URL`, `DROPBOX_LINK_PASSWORD`) and a way to get access tokens. Dropbox ends an access token after about four hours, so anything long-running should use a **refresh token** instead: it stays valid until you revoke it, and the code fetches fresh access tokens by itself.
 
-1. Environment variables `DROPBOX_TOKEN` (or `DROPBOX_TOKEN_FILE`, or the default `tmp_dbx/token.txt`), `DROPBOX_SHARED_URL` and `DROPBOX_LINK_PASSWORD`.
-2. AWS SSM Parameter Store, if `SOCCER_SSM_PREFIX` is set: `<prefix>/dropbox/token`, `<prefix>/dropbox/shared_url` and `<prefix>/dropbox/link_password`, stored as SecureString.
+| Credential | Where it is read from | Lasts |
+|---|---|---|
+| Refresh token (recommended) | `DROPBOX_APP_KEY` + `DROPBOX_REFRESH_TOKEN`, or the JSON file named by `DROPBOX_OAUTH_FILE` (default `tmp_dbx/oauth.json`) | until revoked |
+| Fixed access token | `DROPBOX_TOKEN`, `--token-file`, `DROPBOX_TOKEN_FILE`, or `tmp_dbx/token.txt` | about 4 hours |
 
-Dropbox tokens are short-lived. When one expires, the scripts stop with exit code 2; set a new token and rerun, and finished games are kept. S3 access uses the standard AWS credential chain (instance or task role, `AWS_PROFILE`).
+A token given for one run (`DROPBOX_TOKEN`, `--token-file`) wins over a refresh token, which wins over the token files. With AWS SSM (`SOCCER_SSM_PREFIX` set) the same values are read from `<prefix>/dropbox/{shared_url,link_password,app_key,refresh_token,token}`, stored as SecureString. S3 access uses the standard AWS credential chain (instance or task role, `AWS_PROFILE`).
+
+**Setting up the refresh token, once, on your own computer.** The app key is not a secret, and nothing here is pasted into a chat.
+
+1. In the [Dropbox App Console](https://www.dropbox.com/developers/apps), open your app. Settings: copy the **App key** and check that "Allow public clients (Implicit Grant & PKCE)" is *Allow*. Permissions: tick `files.metadata.read`, `files.content.read` and `sharing.read`, then press Submit.
+2. `python scripts/dropbox_auth.py start --app-key <APP_KEY>` prints a link. Open it and press **Allow**; Dropbox shows a code.
+3. `python scripts/dropbox_auth.py finish` asks for that code (hidden) and writes `tmp_dbx/oauth.json`, readable by you only and gitignored. No token is printed.
+4. `python scripts/dropbox_auth.py check` fetches an access token and lists the shared link, which proves the permissions are enough.
+
+Copy `tmp_dbx/oauth.json` to every machine that runs the pipeline and point `DROPBOX_OAUTH_FILE` at it (`docs/remote_gpu_server.md`). Revoke it under Dropbox → Settings → Connected apps when the project ends. If Dropbox ever rejects the credentials, the scripts stop with exit code 2 and finished games are kept: repeat steps 2 and 3, then rerun.
 
 ## Which games, and how they are split
 

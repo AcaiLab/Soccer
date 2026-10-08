@@ -99,6 +99,23 @@ If the branch isn't on GitHub yet, copy it as a bundle instead, from your PC:
 `scp soccer.bundle soccer-gpu:`, then on the server
 `git clone -b cleanup/dino-contrastive soccer.bundle soccer`.
 
+### Dropbox credentials that do not expire
+
+A Dropbox access token lasts four hours, which a long run cannot live with. Make a
+refresh token once on your PC (README, Credentials), then copy the one file it
+creates and tell the settings file where it is:
+
+```bash
+scp tmp_dbx/oauth.json soccer-gpu:.config/soccer/dropbox_oauth.json
+ssh soccer-gpu 'chmod 600 ~/.config/soccer/dropbox_oauth.json'
+ssh soccer-gpu 'echo "export DROPBOX_OAUTH_FILE=\$HOME/.config/soccer/dropbox_oauth.json" >> ~/.config/soccer/env'
+ssh soccer-gpu 'cd soccer && source .venv/bin/activate && source ~/.config/soccer/env && python scripts/dropbox_auth.py check'
+```
+
+From then on every script fetches its own access tokens, and `DROPBOX_TOKEN_FILE`
+is ignored. With option B the same two values can live in SSM instead:
+`/soccer/dropbox/app_key` and `/soccer/dropbox/refresh_token`.
+
 ## 4. Copy the games from Dropbox to S3 (option B only)
 
 Run long jobs inside `tmux`, so they survive a dropped SSH connection
@@ -111,8 +128,9 @@ python scripts/transfer_dropbox_to_s3.py --workers 2 2>&1 | tee -a ~/transfer.lo
 ```
 
 The games are those in `configs/games.csv`. Rerunning skips files already in S3.
-A Dropbox token lasts about 4 hours. If it expires, the script stops with exit
-code 2: put a new token in SSM (`--overwrite`) and rerun.
+With a refresh token (above) the script renews its access token itself. A fixed
+token lasts about 4 hours; when it expires the script stops with exit code 2:
+put a new token in SSM (`--overwrite`) and rerun.
 
 ## 5. Annotations
 
@@ -133,9 +151,9 @@ This extracts frames (each game's video is downloaded, used and deleted),
 encodes them on the GPU, clusters, trains the contrastive head on training
 games and evaluates on held-out ones, and runs the classifiers. With B it
 then copies `features/` and `results/` to S3. With A, fetch the (small)
-results to your PC with `scp -r soccer-gpu:soccer-data/results .`. If the
-Dropbox token expires mid-run, put a new one in the token file and rerun:
-finished games are skipped. Use `--stages` to run part of it, for
+results to your PC with `scp -r soccer-gpu:soccer-data/results .`. If a fixed
+Dropbox token expires mid-run, put a new one in the token file and rerun
+(a refresh token never needs this): finished games are skipped. Use `--stages` to run part of it, for
 example `--stages cluster classify` after changing only the analysis.
 
 Check on it from your PC without staying logged in:
@@ -151,7 +169,9 @@ ssh soccer-gpu "tail -n 30 ~/pipeline.log; nvidia-smi --query-gpu=utilization.gp
 - Data goes under `SOCCER_DATA_ROOT`. Videos are deleted after extraction;
   remove `frames` with `rm -r $SOCCER_DATA_ROOT/results_by_label_epl_2021_2022`
   once features are safely in S3.
-- Credentials on the server (`~/.config/soccer/env`, the Dropbox token file,
-  and `~/.aws/credentials` for option B) are mode 600. Server administrators
-  can still read them, so use short-lived tokens and narrowly scoped keys.
+- Credentials on the server (`~/.config/soccer/env`, the Dropbox token or OAuth
+  file, and `~/.aws/credentials` for option B) are mode 600. Server administrators
+  can still read them, so use narrowly scoped keys. The Dropbox refresh token works
+  until revoked: give the app read-only scopes, and revoke it under Dropbox →
+  Settings → Connected apps when the project ends.
 - Nothing secret goes into the repository. CI scans every push with gitleaks.

@@ -40,9 +40,11 @@ if [ ! -f "$HOME/.config/soccer/env" ]; then
 export SOCCER_DATA_ROOT="$HOME/soccer-data"      # ~0.4 GB per game for frames, plus 1.2 GB while a game's video is local
 export CUDA_VISIBLE_DEVICES=0                    # pick a free GPU (see nvidia-smi)
 
-# Dropbox: the link and its password, and a file holding a fresh API token (mode 600)
+# Dropbox: the link and its password, and either a refresh token (does not expire, see the
+# README) or a file holding a fresh 4-hour access token. Both files are mode 600.
 export DROPBOX_SHARED_URL='REPLACE'
 export DROPBOX_LINK_PASSWORD='REPLACE'
+# export DROPBOX_OAUTH_FILE="$HOME/.config/soccer/dropbox_oauth.json"   # from scripts/dropbox_auth.py
 export DROPBOX_TOKEN_FILE="$HOME/.config/soccer/dropbox_token"
 
 # Optional, only if the data is staged in S3 (needs AWS access):

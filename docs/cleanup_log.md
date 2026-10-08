@@ -134,3 +134,7 @@ Moves with `git mv`, so history follows each file. Nothing removed.
 ## Phase 4c: S3 staging and the GPU server workflow (2026-10-07)
 
 Nothing removed or moved. Added: `soccer/transfer.py` and `scripts/transfer_dropbox_to_s3.py` (Dropbox → S3 streaming), `scripts/fetch_annotations.py`, S3 options on `batch_pipeline.py` and `run_dino_pipeline.py`, `infra/terraform/` (bucket, IAM, optional Lambda), `infra/gpu-server-setup.sh`, `infra/build_lambda.sh`, `docs/remote_gpu_server.md`.
+
+## Phase 4d: Dropbox credentials that do not expire (2026-10-08)
+
+Nothing removed or moved. Added `scripts/dropbox_auth.py` (a one-time PKCE authorisation that saves a refresh token to the gitignored `tmp_dbx/oauth.json`) and refresh-token support in `soccer/dropbox.py`: an access token is fetched when needed, renewed shortly before it expires, and renewed again if Dropbox refuses it. Fixed access tokens still work and, when given for one run, take priority. A missing permission (`missing_scope`) is now reported as such instead of as an expired token. `tests/test_dropbox_refresh.py` and `tests/test_dropbox_auth.py` cover this with a fake HTTP session, so no network is used.
