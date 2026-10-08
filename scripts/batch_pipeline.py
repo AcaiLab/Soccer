@@ -13,10 +13,10 @@ Credentials come from the environment or AWS SSM, never from code; see
 soccer/dropbox.py and the README.
 
 Usage:
-    python batch_pipeline.py                       # every manifest game
-    python batch_pipeline.py --games 01 02 25      # selected games
-    python batch_pipeline.py --keep-videos         # keep the .mkv files
-    python batch_pipeline.py --local-only          # use videos already in data/videos
+    python scripts/batch_pipeline.py                       # every manifest game
+    python scripts/batch_pipeline.py --games 01 02 25      # selected games
+    python scripts/batch_pipeline.py --keep-videos         # keep the .mkv files
+    python scripts/batch_pipeline.py --local-only          # use videos already in data/videos
 """
 
 import argparse
@@ -82,7 +82,7 @@ def main(argv=None):
     if failed:
         print(f"Failed: {' '.join(failed)}")
         sys.exit(1)
-    print("Next: python temporal_clip_features.py --model facebook/dinov2-base")
+    print("Next: python scripts/temporal_clip_features.py --model facebook/dinov2-base")
 
 
 if __name__ == "__main__":

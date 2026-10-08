@@ -14,8 +14,8 @@ configuration is fit on train and ranked on val; only the chosen one is
 scored on test, together with macro-F1 and the majority-class baseline.
 
 Usage:
-    python event_classification.py
-    python event_classification.py --test-games 25 26 27 28 29 30
+    python scripts/event_classification.py
+    python scripts/event_classification.py --test-games 25 26 27 28 29 30
 """
 
 import argparse

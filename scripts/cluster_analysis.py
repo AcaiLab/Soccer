@@ -24,8 +24,8 @@ Outputs (in --out-dir, default results/<model name>)
 
 Usage
 -----
-    python cluster_analysis.py
-    python cluster_analysis.py --model openai/clip-vit-base-patch32
+    python scripts/cluster_analysis.py
+    python scripts/cluster_analysis.py --model openai/clip-vit-base-patch32
 """
 
 import argparse

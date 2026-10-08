@@ -19,8 +19,8 @@ categories are encoded with an encoder fit on training events only.
 Annotation features use true previous labels, so they are an upper bound.
 
 Usage:
-    python game_flow_features.py
-    python multimodal_classification.py
+    python scripts/game_flow_features.py
+    python scripts/multimodal_classification.py
 """
 
 import argparse

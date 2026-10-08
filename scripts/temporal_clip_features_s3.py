@@ -10,7 +10,7 @@ AWS credentials come from the standard chain (instance or task role,
 AWS_PROFILE); none are read from code.
 
 Usage:
-    python temporal_clip_features_s3.py --frames-uri s3://<bucket>/frames/
+    python scripts/temporal_clip_features_s3.py --frames-uri s3://<bucket>/frames/
 """
 
 import argparse
@@ -22,10 +22,10 @@ import tempfile
 import numpy as np
 
 from soccer.config import data_path, load_config, repo_path
+from soccer.encoding import encode_events, save_outputs
 from soccer.frames import parse_half_dir, scan_events
 from soccer.manifest import load_manifest
 from soccer.storage import download_prefix, list_subdirs
-from temporal_clip_features import encode_events, save_outputs
 
 
 def main(argv=None):
@@ -43,7 +43,7 @@ def main(argv=None):
 
     import torch
 
-    from model_encoders import build_encoder
+    from soccer.encoders import build_encoder
 
     out_dir = pathlib.Path(args.out or data_path(cfg, "features") / f"temporal_{args.model.split('/')[-1]}_s3")
     parts_dir = out_dir / "parts"

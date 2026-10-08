@@ -2,7 +2,7 @@
 Temporal Feature Extraction for Soccer Events
 ==============================================
 Groups extracted frames by event (game x half x label x event_tag), encodes
-each frame with a frozen vision model (DINOv2 or CLIP, see model_encoders.py)
+each frame with a frozen vision model (DINOv2 or CLIP, see soccer/encoders.py)
 and saves per-event feature tensors of shape (n_frames, embed_dim).
 
 With a +/-30 s window at 1 fps there are up to 60 frames per event.
@@ -20,8 +20,8 @@ Outputs (in --out, default features/temporal_<model name>)
 
 Usage
 -----
-    python temporal_clip_features.py
-    python temporal_clip_features.py --model facebook/dinov2-base --batch-size 64 --device cuda
+    python scripts/temporal_clip_features.py
+    python scripts/temporal_clip_features.py --model facebook/dinov2-base --batch-size 64 --device cuda
 """
 
 import argparse
@@ -29,61 +29,11 @@ import json
 import pathlib
 
 import numpy as np
-import pandas as pd
-from PIL import Image
-from tqdm import tqdm
 
 from soccer.config import data_path, load_config, repo_path
-from soccer.frames import scan_events, select_frames
+from soccer.encoding import encode_events, save_outputs
+from soccer.frames import scan_events
 from soccer.manifest import load_manifest
-
-
-def load_safe(path: str):
-    try:
-        img = Image.open(path)
-        img.load()
-        return img.convert("RGB")
-    except Exception as e:  # corrupt or truncated file: skip the frame, keep the event
-        print(f"  [WARN] Skipping {path}: {e}")
-        return None
-
-
-def encode_events(encoder, events: dict, max_frames: int, batch_size: int, progress: bool = True):
-    """Encode every frame; return (padded (E,T,D), masks (E,T), keys, n_frames per event)."""
-    keys = sorted(events)
-    frame_lists = [select_frames(events[k], max_frames) for k in keys]
-    flat = [(i, p) for i, frames in enumerate(frame_lists) for _, p in frames]
-
-    padded = np.zeros((len(keys), max_frames, encoder.embed_dim), dtype=np.float32)
-    masks = np.zeros((len(keys), max_frames), dtype=bool)
-    filled = np.zeros(len(keys), dtype=int)
-    starts = range(0, len(flat), batch_size)
-    for start in tqdm(starts, unit="batch", disable=not progress):
-        batch = [(i, load_safe(p)) for i, p in flat[start:start + batch_size]]
-        batch = [(i, img) for i, img in batch if img is not None]
-        if not batch:
-            continue
-        feats = encoder.encode_batch([img for _, img in batch])
-        for (i, _), feat in zip(batch, feats, strict=True):
-            padded[i, filled[i]] = feat
-            masks[i, filled[i]] = True
-            filled[i] += 1
-    return padded, masks, keys, [len(f) for f in frame_lists]
-
-
-def save_outputs(out_dir: pathlib.Path, padded, masks, keys, n_frames, manifest_games=None) -> pd.DataFrame:
-    games, halves, labels, tags = (np.array(c) for c in zip(*keys, strict=True)) if keys else ([],) * 4
-    np.savez_compressed(out_dir / "clip_temporal_padded.npz", features=padded, masks=masks,
-                        labels=labels, games=games, halves=halves, event_tags=tags)
-    by_num = {g.game_num: g for g in manifest_games or []}
-    df = pd.DataFrame({
-        "game": games, "half": halves, "label": labels, "event_tag": tags,
-        "n_frames": n_frames, "n_valid": masks.sum(axis=1),
-        "match_id": [by_num[g].match_id if g in by_num else "" for g in games],
-        "split": [by_num[g].split if g in by_num else "" for g in games],
-    })
-    df.to_csv(out_dir / "temporal_metadata.csv", index=False)
-    return df
 
 
 def main(argv=None):
@@ -102,7 +52,7 @@ def main(argv=None):
 
     import torch
 
-    from model_encoders import build_encoder
+    from soccer.encoders import build_encoder
 
     frames_root = pathlib.Path(args.frames_root)
     out_dir = pathlib.Path(args.out or data_path(cfg, "features") / f"temporal_{args.model.split('/')[-1]}")

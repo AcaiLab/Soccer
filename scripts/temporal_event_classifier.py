@@ -21,9 +21,9 @@ is an upper bound for a deployed system (docs/leak_audit.md, B9).
 configuration and writes cross_league_results.csv.
 
 Usage:
-    python game_flow_features.py --all-leagues
-    python temporal_event_classifier.py
-    python temporal_event_classifier.py --cross-league
+    python scripts/game_flow_features.py --all-leagues
+    python scripts/temporal_event_classifier.py
+    python scripts/temporal_event_classifier.py --cross-league
 """
 
 import argparse

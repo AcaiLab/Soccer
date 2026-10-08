@@ -21,9 +21,9 @@ Every event is still projected and saved, so evaluate_contrastive.py can
 score held-out games.
 
 Usage:
-    python contrastive_training.py
-    python contrastive_training.py --epochs 100 --lr 1e-3 --margin 0.5
-    python contrastive_training.py --train-games 01 02 03 ... 20
+    python scripts/contrastive_training.py
+    python scripts/contrastive_training.py --epochs 100 --lr 1e-3 --margin 0.5
+    python scripts/contrastive_training.py --train-games 01 02 03 ... 20
 """
 
 import argparse

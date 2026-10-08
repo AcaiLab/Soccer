@@ -17,7 +17,7 @@ Produces (in --out-dir):
   - metrics_comparison.png, contrastive_metrics.csv (both groups)
 
 Usage:
-    python evaluate_contrastive.py
+    python scripts/evaluate_contrastive.py
 """
 
 import argparse

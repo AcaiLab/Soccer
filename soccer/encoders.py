@@ -8,7 +8,7 @@ Supports:
 
 Factory
 -------
-    from model_encoders import build_encoder
+    from soccer.encoders import build_encoder
     encoder = build_encoder("openai/clip-vit-base-patch32", device="cpu")
     feats   = encoder.encode_batch(list_of_pil_images)  # (N, 512) float32
     dim     = encoder.embed_dim                          # 512

@@ -2,7 +2,7 @@
 Model-Agnostic Frame Feature Extraction
 ========================================
 Extracts one embedding per frame (no grouping into events) with any vision
-model supported by model_encoders.py. Used for the individual-frame clustering
+model supported by soccer/encoders.py. Used for the individual-frame clustering
 in cluster_analysis.py.
 
 Outputs (in --out, default features/<model name>_flat)
@@ -11,9 +11,9 @@ Outputs (in --out, default features/<model name>_flat)
   metadata.csv                - one row per embedding: game, half, label, filepath
 
 Usage:
-    python extract_frame_features.py
-    python extract_frame_features.py --model openai/clip-vit-base-patch32
-    python extract_frame_features.py --model facebook/dinov2-large --batch-size 64 --device cuda
+    python scripts/extract_frame_features.py
+    python scripts/extract_frame_features.py --model openai/clip-vit-base-patch32
+    python scripts/extract_frame_features.py --model facebook/dinov2-large --batch-size 64 --device cuda
 """
 
 import argparse
@@ -24,8 +24,8 @@ import pandas as pd
 from tqdm import tqdm
 
 from soccer.config import data_path, load_config
+from soccer.encoding import load_safe
 from soccer.frames import scan_events
-from temporal_clip_features import load_safe
 
 
 def flat_output_dir(cfg: dict, model: str) -> pathlib.Path:
@@ -45,7 +45,7 @@ def main(argv=None):
 
     import torch
 
-    from model_encoders import build_encoder
+    from soccer.encoders import build_encoder
 
     out_dir = pathlib.Path(args.out or flat_output_dir(cfg, args.model))
     out_dir.mkdir(parents=True, exist_ok=True)

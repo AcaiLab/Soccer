@@ -3,7 +3,7 @@ Apply the improved commentary generator to a labeled-issues CSV and print a
 side-by-side comparison showing the fixes.
 
 Usage:
-    python fix_labeled_issues.py --issues matched_commentary_strict_train_issues_labeled.csv \\
+    python scripts/fix_labeled_issues.py --issues matched_commentary_strict_train_issues_labeled.csv \\
         --out improved_commentary_comparison.csv
 """
 import argparse
@@ -11,7 +11,6 @@ import random
 from pathlib import Path
 
 import pandas as pd
-
 from generate_commentary import (
     EVENT_FACTS,
     build_entity_context,

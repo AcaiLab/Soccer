@@ -9,8 +9,8 @@ Credentials come from the environment or AWS SSM, never from code; see
 soccer/dropbox.py and the README.
 
 Usage:
-    python download_dropbox_games.py --games 01 02
-    python download_dropbox_games.py              # every manifest game
+    python scripts/download_dropbox_games.py --games 01 02
+    python scripts/download_dropbox_games.py              # every manifest game
 """
 
 import argparse

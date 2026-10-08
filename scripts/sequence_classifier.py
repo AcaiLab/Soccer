@@ -15,7 +15,7 @@ Protocol (leak-free, by game, from the manifest):
 Per-dimension standardisation uses training frames only.
 
 Usage:
-    python sequence_classifier.py
+    python scripts/sequence_classifier.py
 """
 
 import argparse

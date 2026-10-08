@@ -119,3 +119,14 @@ Approved by Hasset Admasu on 2026-10-07 ("make all the changes").
 | from | to | size | reason |
 |---|---|---|---|
 | `clustering/` (77 files) | `results/archive_pre_fix/` | 15 MB | pre-fix results, several invalid (leak audit B1-B5); kept because the write-up cites them. New runs write to `results/<name>/`, which is gitignored; the archive stays tracked and has a README naming what is invalid. |
+
+### Commit: conventional layout
+
+Moves with `git mv`, so history follows each file. Nothing removed.
+
+| from | to | note |
+|---|---|---|
+| 17 stage scripts at the repo root | `scripts/` | run as `python scripts/<name>.py`; `run_dino_pipeline.py` stays at the root as the entry point |
+| `model_encoders.py` | `soccer/encoders.py` | library code, not a script |
+| frame-encoding helpers in `temporal_clip_features.py` | `soccer/encoding.py` | shared by three scripts; torch-free |
+| `ec2-setup.sh` | `infra/ec2-setup.sh` | machine setup |

@@ -13,8 +13,8 @@ Fixes over original pipeline:
   5. Grammar fixes (a/an, proper label formatting)
 
 Usage:
-    python generate_commentary.py --shard commentary_review/shard_0000
-    python generate_commentary.py --shard commentary_review/shard_0000 --json-dir data/json/Soccer_Data_Json
+    python scripts/generate_commentary.py --shard commentary_review/shard_0000
+    python scripts/generate_commentary.py --shard commentary_review/shard_0000 --json-dir data/json/Soccer_Data_Json
 """
 
 import argparse

@@ -15,8 +15,8 @@ computed, and categorical columns are left as text so each classifier can fit
 its encoder on training games only (soccer/game_flow.py).
 
 Usage:
-    python game_flow_features.py
-    python game_flow_features.py --all-leagues
+    python scripts/game_flow_features.py
+    python scripts/game_flow_features.py --all-leagues
 """
 
 import argparse

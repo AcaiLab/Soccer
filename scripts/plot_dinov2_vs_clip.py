@@ -5,9 +5,9 @@ Reads the clustering_metrics.csv that cluster_analysis.py wrote for each model,
 instead of numbers typed into this file, so the figure always matches the run.
 
 Usage:
-    python cluster_analysis.py --model openai/clip-vit-base-patch32
-    python cluster_analysis.py --model facebook/dinov2-base
-    python plot_dinov2_vs_clip.py
+    python scripts/cluster_analysis.py --model openai/clip-vit-base-patch32
+    python scripts/cluster_analysis.py --model facebook/dinov2-base
+    python scripts/plot_dinov2_vs_clip.py
 """
 
 import argparse

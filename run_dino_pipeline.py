@@ -1,7 +1,8 @@
 """
 DINOv2 Soccer Event Pipeline - entry point
 ==========================================
-Runs the whole pipeline, or any subset of its stages, in order:
+Runs the whole pipeline, or any subset of its stages, in order (the stage
+scripts live in scripts/):
 
   frames       download videos, extract event frames, delete videos   (CPU; batch_pipeline.py)
   features     encode frames with the frozen model                     (GPU; temporal_clip_features.py,
@@ -27,7 +28,7 @@ import subprocess
 import sys
 from datetime import datetime
 
-from soccer.config import data_path, load_config
+from soccer.config import REPO_ROOT, data_path, load_config
 
 STAGES = ["frames", "features", "cluster", "contrastive", "classify"]
 
@@ -37,8 +38,8 @@ def log(msg):
 
 
 def run(script, *args):
-    cmd = [sys.executable, script, *[str(a) for a in args]]
-    log("$ " + " ".join(cmd[1:]))
+    cmd = [sys.executable, str(REPO_ROOT / "scripts" / script), *[str(a) for a in args]]
+    log(f"$ scripts/{script} " + " ".join(cmd[2:]))
     result = subprocess.run(cmd)
     if result.returncode != 0:
         log(f"ERROR: {script} exited with {result.returncode}")

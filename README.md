@@ -2,7 +2,7 @@
 
 Can a general-purpose vision model (DINOv2, CLIP), never trained on soccer, tell what kind of event happens in the 60 seconds around a commentary timestamp, in a match it has never seen? This repository turns broadcast video into per-event embeddings and studies them with clustering, a contrastive projection head, and classifiers.
 
-> **Results in `clustering/` predate the fixes on this branch.** Several of them are invalid: the contrastive head saw test-game labels, frames were cut from the wrong half, and models were picked on the test set. See [docs/leak_audit.md](docs/leak_audit.md) before quoting any number, and rerun the pipeline.
+> **Results in `results/archive_pre_fix/` predate the fixes on this branch.** Several of them are invalid: the contrastive head saw test-game labels, frames were cut from the wrong half, and models were picked on the test set. See [docs/leak_audit.md](docs/leak_audit.md) before quoting any number, and rerun the pipeline.
 
 ## Setup
 
@@ -25,9 +25,9 @@ The data is **SoccerReplay-1988** (1,988 matches, shared under an NDA; its offic
 | What | Where it comes from | Where it goes |
 |---|---|---|
 | Annotation JSONs | Hugging Face `Homie0609/SoccerReplay-1988` (gated) or the lab's Google Drive copy | `data/json/Soccer_Data_Json/{train,valid,test}/<league>/<match>/` |
-| Match videos (`*_1.mkv`, `*_2.mkv`) | Password-protected Dropbox link, downloaded by `batch_pipeline.py` | `data/videos/<match>/` (deleted after extraction) |
+| Match videos (`*_1.mkv`, `*_2.mkv`) | Password-protected Dropbox link, downloaded by `scripts/batch_pipeline.py` | `data/videos/<match>/` (deleted after extraction) |
 | Extracted frames | `batch_pipeline.py` | `results_by_label_epl_2021_2022/game_XX_half_N/frames/<label>/` |
-| Features, results | Pipeline stages | `features/`, `clustering/` |
+| Features, results | Pipeline stages | `features/`, `results/` |
 
 `data/`, frames and features are gitignored. All paths are set in `configs/pipeline.yaml`; set `SOCCER_DATA_ROOT` to keep data elsewhere, e.g. on a mounted volume.
 
@@ -65,11 +65,11 @@ python run_dino_pipeline.py --stages frames --local-only # extract from videos a
 | `contrastive` | `contrastive_training.py` (train games only), `evaluate_contrastive.py` (held-out vs train reported separately) | GPU or CPU |
 | `classify` | `event_classification.py`, `sequence_classifier.py`, `game_flow_features.py` + `multimodal_classification.py`, `temporal_event_classifier.py` | CPU (sequence models prefer GPU) |
 
-Each script also runs on its own; `python <script> --help` lists its options. Reported numbers always come with their baseline: purity with its shuffled-cluster purity, accuracy with macro-F1 and the majority-class accuracy.
+The stage scripts live in `scripts/` and also run on their own; `python scripts/<name>.py --help` lists their options. Reported numbers always come with their baseline: purity with its shuffled-cluster purity, accuracy with macro-F1 and the majority-class accuracy.
 
 ### On AWS
 
-- **GPU stages** (`features`, `contrastive`, sequence models) run on an EC2 GPU instance bootstrapped by `ec2-setup.sh`. It needs `SOCCER_BUCKET` set and an instance role with S3 read/write on that bucket and SSM read on the Dropbox parameters. The same container or commands fit SageMaker or AWS Batch jobs.
+- **GPU stages** (`features`, `contrastive`, sequence models) run on an EC2 GPU instance bootstrapped by `infra/ec2-setup.sh`. It needs `SOCCER_BUCKET` set and an instance role with S3 read/write on that bucket and SSM read on the Dropbox parameters. The same container or commands fit SageMaker or AWS Batch jobs.
 - **CPU stages** (`frames`, `cluster`, `classify`) run anywhere: a laptop, a CPU instance, or Batch/ECS. `frames` downloads about 1.2 GB per match and keeps one match on disk at a time.
 - **Lightweight data preparation**, such as producing the train/test split manifest from data in S3, is planned as an AWS Lambda function under `infra/` (Phase 5).
 
@@ -87,11 +87,13 @@ CI (`.github/workflows/ci.yml`) runs lint, tests and a gitleaks secret scan on e
 
 ```
 soccer/        shared package: config, manifest, annotations, extraction, Dropbox, storage,
-               features, metrics, evaluation protocol
+               encoders, encoding, features, metrics, evaluation protocol
 configs/       pipeline.yaml, games.csv (manifest), excluded_matches.csv
-*.py           pipeline stages (entry point: run_dino_pipeline.py)
+run_dino_pipeline.py  entry point: runs the stages in order
+scripts/       pipeline stage scripts (frames, features, clustering, contrastive, classifiers, commentary)
+infra/         machine setup (EC2 bootstrap)
 preprocess/    single-video extraction CLI, distribution plots, Whisper transcription
 tests/         unit and smoke tests
 docs/          leak_audit.md, cleanup_log.md
-clustering/    committed results from before the fixes (see the warning above)
+results/       run outputs (gitignored); archive_pre_fix/ holds the old, partly invalid results
 ```

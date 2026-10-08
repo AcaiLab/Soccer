@@ -11,8 +11,8 @@ so a purity number on its own overstates the structure. ARI is chance-corrected.
 Produces per-game t-SNE + K-Means plots and a summary metrics CSV.
 
 Usage:
-    python within_game_clustering.py
-    python within_game_clustering.py --features-dir features/temporal_dinov2-base
+    python scripts/within_game_clustering.py
+    python scripts/within_game_clustering.py --features-dir features/temporal_dinov2-base
 """
 
 import argparse
