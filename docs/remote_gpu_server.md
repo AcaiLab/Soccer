@@ -1,23 +1,30 @@
-# Running the pipeline on the GPU server, with data in S3
+# Running the pipeline on the GPU server
 
-Nothing heavy runs on a personal machine. It only opens an SSH session.
+Nothing heavy runs on a personal machine; it only opens an SSH session. There
+are two ways to feed the server:
+
+**A. Direct (no AWS needed, the default).** The server downloads one game from
+Dropbox, extracts its frames, deletes the video, and moves on; then it encodes
+and analyses everything.
 
 ```
-Dropbox ──(stream, no disk)──> S3 bucket <──(read videos, write outputs)──> GPU server
-                                   │                                          │
-                     videos/ json/ frames/ features/ results/        frames, DINOv2, analysis
+Dropbox ──> GPU server: download game → frames → delete video → DINOv2 → analysis
 ```
+
+**B. Staged in S3 (needs AWS access).** Videos are first streamed into a
+bucket, then the server reads them from there. This is useful if several
+machines need the videos, or to keep a durable copy. Sections 2 and 4 below
+apply only to B.
 
 | Step | Runs on | Load |
 |---|---|---|
-| Copy videos Dropbox → S3 | GPU server (or the optional Lambda) | network only, about 1.2 GB per game |
-| Annotations → server (and S3) | GPU server | about 20 MB |
-| Frame extraction | GPU server CPU | one game's video on disk at a time |
+| Video download (A: Dropbox → server, B: Dropbox → S3 → server) | GPU server | about 1.2 GB per game, one game on disk at a time |
+| Annotations (public Google Drive copy) | GPU server | about 20 MB |
+| Frame extraction | GPU server CPU | |
 | DINOv2 features, contrastive, sequence models | GPU server GPU | about 1 min per game for features |
 | Clustering, classifiers | GPU server CPU | light |
 
 Measured on game 01: video 1.2 GB, extracted frames 0.34 GB, features 11 MB.
-For 30 games, that's about 36 GB in `videos/` and 10 GB of frames.
 
 ## 1. Your SSH key (on your PC)
 
@@ -42,7 +49,7 @@ email or a file in this repository**, and don't share it.
    ```
 4. Test it: `ssh soccer-gpu nvidia-smi`.
 
-## 2. AWS, once
+## 2. AWS, once (option B only)
 
 From a machine with AWS admin credentials (after approval):
 
@@ -81,7 +88,7 @@ parameters. Deactivate it when the project ends:
 
 ```bash
 ssh soccer-gpu
-git clone -b cleanup/dino-contrastive https://github.com/AcaiLab/Soccer.git soccer   # once the branch is pushed
+git clone -b cleanup/dino-contrastive https://github.com/AcaiLab/Soccer.git soccer   # if the branch is on GitHub
 cd soccer
 bash infra/gpu-server-setup.sh            # cu118 as argument for older drivers
 nano ~/.config/soccer/env                 # fill in the REPLACE values
@@ -92,7 +99,7 @@ If the branch isn't on GitHub yet, copy it as a bundle instead, from your PC:
 `scp soccer.bundle soccer-gpu:`, then on the server
 `git clone -b cleanup/dino-contrastive soccer.bundle soccer`.
 
-## 4. Copy the games from Dropbox to S3
+## 4. Copy the games from Dropbox to S3 (option B only)
 
 Run long jobs inside `tmux`, so they survive a dropped SSH connection
 (`tmux attach -t soccer` to come back).
@@ -110,19 +117,25 @@ code 2: put a new token in SSM (`--overwrite`) and rerun.
 ## 5. Annotations
 
 ```bash
-python scripts/fetch_annotations.py --splits train valid test --upload
+python scripts/fetch_annotations.py --splits train valid test           # add --upload for option B
 ```
 
 ## 6. Run the pipeline
 
 ```bash
-python run_dino_pipeline.py --from-s3 --upload --device cuda 2>&1 | tee -a ~/pipeline.log
+tmux new -s soccer          # or: tmux attach -t soccer
+cd ~/soccer && source .venv/bin/activate && source ~/.config/soccer/env
+python run_dino_pipeline.py --device cuda 2>&1 | tee -a ~/pipeline.log              # A: direct from Dropbox
+python run_dino_pipeline.py --from-s3 --upload --device cuda 2>&1 | tee -a ~/pipeline.log   # B: via S3
 ```
 
-This extracts frames (each game's video is fetched from S3, used and deleted),
+This extracts frames (each game's video is downloaded, used and deleted),
 encodes them on the GPU, clusters, trains the contrastive head on training
-games and evaluates on held-out ones, runs the classifiers, then copies
-`features/` and `results/` to S3. Use `--stages` to run part of it, for
+games and evaluates on held-out ones, and runs the classifiers. With B it
+then copies `features/` and `results/` to S3. With A, fetch the (small)
+results to your PC with `scp -r soccer-gpu:soccer-data/results .`. If the
+Dropbox token expires mid-run, put a new one in the token file and rerun:
+finished games are skipped. Use `--stages` to run part of it, for
 example `--stages cluster classify` after changing only the analysis.
 
 Check on it from your PC without staying logged in:
@@ -138,7 +151,7 @@ ssh soccer-gpu "tail -n 30 ~/pipeline.log; nvidia-smi --query-gpu=utilization.gp
 - Data goes under `SOCCER_DATA_ROOT`. Videos are deleted after extraction;
   remove `frames` with `rm -r $SOCCER_DATA_ROOT/results_by_label_epl_2021_2022`
   once features are safely in S3.
-- Credentials on the server are `~/.aws/credentials` and `~/.config/soccer/env`,
-  both mode 600. Server administrators can still read them, which is why the
-  AWS key is limited to this bucket.
+- Credentials on the server (`~/.config/soccer/env`, the Dropbox token file,
+  and `~/.aws/credentials` for option B) are mode 600. Server administrators
+  can still read them, so use short-lived tokens and narrowly scoped keys.
 - Nothing secret goes into the repository. CI scans every push with gitleaks.

@@ -69,15 +69,16 @@ The stage scripts live in `scripts/` and also run on their own; `python scripts/
 
 ### Where it runs
 
-The intended setup keeps all heavy work off personal machines. **Videos stream from Dropbox straight into S3, and the professor's GPU server processes them from S3** and writes features and results back. Step by step, including SSH key handling and the least-privilege AWS identity: [docs/remote_gpu_server.md](docs/remote_gpu_server.md).
+All heavy work runs on the professor's GPU server; a personal machine only opens an SSH session. By default **the server downloads each game straight from Dropbox**, extracts its frames, deletes the video, then encodes and analyses everything. No AWS account is needed. Optionally, videos can first be staged in S3. Step by step, including SSH key handling: [docs/remote_gpu_server.md](docs/remote_gpu_server.md).
 
 ```bash
-python scripts/transfer_dropbox_to_s3.py                # Dropbox -> s3://<bucket>/videos, no local disk
-python scripts/fetch_annotations.py --splits train valid test --upload
-python run_dino_pipeline.py --from-s3 --upload --device cuda
+python scripts/fetch_annotations.py --splits train valid test     # public Google Drive copy
+python run_dino_pipeline.py --device cuda                         # direct from Dropbox
+# with S3 (needs AWS access):
+python scripts/transfer_dropbox_to_s3.py && python run_dino_pipeline.py --from-s3 --upload --device cuda
 ```
 
-- `infra/terraform/` defines the bucket (private, KMS-encrypted, versioned, HTTPS-only) and the server's IAM identity, plus an optional Lambda for the transfer. No secret is stored in Terraform.
+- `infra/terraform/` (S3 option only) defines the bucket (private, KMS-encrypted, versioned, HTTPS-only) and the server's IAM identity, plus an optional Lambda for the transfer. No secret is stored in Terraform.
 - `infra/gpu-server-setup.sh` sets up the server without sudo; `infra/ec2-setup.sh` does the same for an EC2 GPU instance.
 - Lightweight data preparation, such as producing the train/test split manifest from data in S3, is planned as an AWS Lambda (Phase 5).
 

@@ -37,19 +37,19 @@ mkdir -p "$HOME/.config/soccer"
 if [ ! -f "$HOME/.config/soccer/env" ]; then
   cat > "$HOME/.config/soccer/env" << 'EOF'
 # Load with:  source ~/.config/soccer/env      (this file is readable only by you)
-export SOCCER_S3_ROOT=s3://REPLACE-with-bucket-name
-export AWS_PROFILE=soccer                        # profile in ~/.aws/credentials
-export AWS_DEFAULT_REGION=REPLACE-with-region
-export SOCCER_DATA_ROOT="$HOME/soccer-data"      # needs ~0.4 GB per game for frames, 1.2 GB while a game's video is local
-# Pick a free GPU (see nvidia-smi); remove to use all
-export CUDA_VISIBLE_DEVICES=0
+export SOCCER_DATA_ROOT="$HOME/soccer-data"      # ~0.4 GB per game for frames, plus 1.2 GB while a game's video is local
+export CUDA_VISIBLE_DEVICES=0                    # pick a free GPU (see nvidia-smi)
 
-# Dropbox, only for the Dropbox -> S3 copy. Either SSM (preferred) ...
-export SOCCER_SSM_PREFIX=/soccer
-# ... or local values (keep the token in its own file, mode 600):
-# export DROPBOX_SHARED_URL='...'
-# export DROPBOX_LINK_PASSWORD='...'
-# export DROPBOX_TOKEN_FILE="$HOME/.config/soccer/dropbox_token"
+# Dropbox: the link and its password, and a file holding a fresh API token (mode 600)
+export DROPBOX_SHARED_URL='REPLACE'
+export DROPBOX_LINK_PASSWORD='REPLACE'
+export DROPBOX_TOKEN_FILE="$HOME/.config/soccer/dropbox_token"
+
+# Optional, only if the data is staged in S3 (needs AWS access):
+# export SOCCER_S3_ROOT=s3://bucket
+# export AWS_PROFILE=soccer
+# export AWS_DEFAULT_REGION=us-east-1
+# export SOCCER_SSM_PREFIX=/soccer
 EOF
   echo "Wrote $HOME/.config/soccer/env: edit the REPLACE values"
 else
