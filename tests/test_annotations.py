@@ -94,3 +94,19 @@ def test_find_annotation_file_reports_split(tmp_path):
     path, split = find_annotation_file(tmp_path, "england_epl_2021-2022", "m1")
     assert path.name == "m1.json" and split == "valid"
     assert find_annotation_file(tmp_path, "england_epl_2021-2022", "missing") is None
+
+
+def test_events_are_deduplicated_by_instant_not_text():
+    comments = [
+        {"half": 1, "time_stamp": "45+2:30", "comments_type": "corner"},
+        {"half": 1, "time_stamp": "47:30", "comments_type": "corner"},   # same second
+        {"half": 1, "time_stamp": "47:30", "comments_type": "lead to corner"},  # same second, other label
+    ]
+    events = events_for_half(comments, 1)
+    assert [(e.seconds, e.label) for e in events] == [(2850, "corner"), (2850, "lead_to_corner")]
+
+
+def test_half_stored_as_text_is_understood():
+    comments = [{"half": "2", "time_stamp": "10:00", "comments_type": "goal"},
+                {"half": None, "time_stamp": "11:00", "comments_type": "goal"}]
+    assert [e.seconds for e in events_for_half(comments, 2)] == [600]

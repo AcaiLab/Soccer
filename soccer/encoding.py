@@ -13,7 +13,7 @@ import pandas as pd
 from PIL import Image
 from tqdm import tqdm
 
-from soccer.frames import select_frames
+from soccer.frames import half_marker, select_frames
 
 
 def load_safe(path: str):
@@ -65,12 +65,16 @@ def save_outputs(out_dir: pathlib.Path, padded, masks, keys, n_frames, manifest_
 
 
 def _fingerprint(meta: dict, frames: dict) -> str:
-    """What a cached half depends on: encoder settings and the exact frame files."""
+    """What a cached half depends on: encoder settings, the exact frame files, and
+    the half's extraction marker (window settings, source video, annotation file),
+    so re-extracting with other settings invalidates the cache even if names match."""
     import hashlib
     import json
 
     names = sorted(f"{k[2]}/{pathlib.Path(p).name}" for k, fs in frames.items() for _, p in fs)
-    return json.dumps({**meta, "frames": hashlib.sha256("\n".join(names).encode()).hexdigest()}, sort_keys=True)
+    first = next(p for fs in frames.values() for _, p in fs)
+    return json.dumps({**meta, "frames": hashlib.sha256("\n".join(names).encode()).hexdigest(),
+                       "extraction": hashlib.sha256(half_marker(first).encode()).hexdigest()}, sort_keys=True)
 
 
 def encode_cached(get_encoder, events: dict, max_frames: int, batch_size: int,

@@ -15,11 +15,14 @@ import pathlib
 import re
 from dataclasses import dataclass
 
-import cv2
-
 from soccer.annotations import Event, seconds_to_tag
 
 FRAME_RE = re.compile(r"_frame_(\d{2}-\d{2}\.\d{3})_t(\d{2}-\d{2}\.\d{3})\.(?:png|jpg)$")
+DONE_MARKER = "extraction.json"  # written into a half's folder once its extraction is complete
+VIDEO_EXTS = (".mkv", ".mp4")
+# A frame whose decoded timestamp differs from its index-based time by more
+# than this is reported: it would mean seeking or frame counting went wrong.
+MAX_TIME_ERROR_SEC = 0.5
 
 
 @dataclass(frozen=True)
@@ -41,6 +44,9 @@ class ExtractionStats:
     events: int = 0
     frames: int = 0
     skipped: int = 0
+    # Largest gap, over all saved frames, between the decoder's timestamp and
+    # the time implied by the frame index (0 for exact seeking, constant fps).
+    max_time_error_sec: float = 0.0
 
 
 def frame_filename(label: str, event: Event, frame_seconds: float, ext: str) -> str:
@@ -55,6 +61,8 @@ def extract_events(video_path: str | pathlib.Path, events: list[Event],
     `events` must all belong to the half this video holds; use
     annotations.events_for_half() to get them.
     """
+    import cv2  # imported here so constants above load without OpenCV (e.g. in the transfer Lambda)
+
     settings = settings or ExtractionSettings()
     out_dir = pathlib.Path(out_dir)
     cap = cv2.VideoCapture(str(video_path))
@@ -68,23 +76,30 @@ def extract_events(video_path: str | pathlib.Path, events: list[Event],
         size = (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
         stats = ExtractionStats()
         for event in events:
-            n = _extract_one(cap, fps, duration, size, event, out_dir, settings)
+            n, err = _extract_one(cap, fps, duration, size, event, out_dir, settings)
+            stats.max_time_error_sec = max(stats.max_time_error_sec, err)
             if n:
                 stats.events += 1
                 stats.frames += n
             else:
                 stats.skipped += 1
+        if stats.max_time_error_sec > MAX_TIME_ERROR_SEC:
+            print(f"  WARNING: {video_path}: decoded frame times differ from their index by up to "
+                  f"{stats.max_time_error_sec:.2f}s (inexact seeking or variable frame rate)", flush=True)
         return stats
     finally:
         cap.release()
 
 
-def _extract_one(cap, fps, duration, size, event, out_dir, settings) -> int:
+def _extract_one(cap, fps, duration, size, event, out_dir, settings) -> tuple[int, float]:
+    """Returns (frames saved, largest decoder-vs-index time error among them)."""
+    import cv2
+
     start_sec = max(0.0, event.seconds - settings.before_sec)
     end_sec = min(duration, event.seconds + settings.after_sec)
     start_f, end_f = round(start_sec * fps), round(end_sec * fps)
     if end_f <= start_f:
-        return 0
+        return 0, 0.0
 
     frames_dir = out_dir / "frames" / event.label
     frames_dir.mkdir(parents=True, exist_ok=True)
@@ -100,10 +115,12 @@ def _extract_one(cap, fps, duration, size, event, out_dir, settings) -> int:
     params = ([cv2.IMWRITE_JPEG_QUALITY, settings.jpeg_quality]
               if settings.image_format == "jpg" else [])
 
-    # Frame-index seeking was checked to be exact on these .mkv files
-    # (docs/leak_audit.md, B3), so frames are counted from start_f.
+    # Frames are counted from start_f after a frame-index seek. That was checked
+    # to be exact on these videos (docs/leak_audit.md, B3); every saved frame is
+    # still compared with the decoder's own timestamp, and the worst gap is
+    # returned so each half's marker records how exact its frame times are.
     cap.set(cv2.CAP_PROP_POS_FRAMES, start_f)
-    saved = 0
+    saved, worst = 0, 0.0
     try:
         for idx in range(start_f, end_f):
             ok, frame = cap.read()
@@ -112,6 +129,9 @@ def _extract_one(cap, fps, duration, size, event, out_dir, settings) -> int:
             if clip is not None:
                 clip.write(frame)
             if idx in save_idxs:
+                decoded = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
+                if decoded > 0 or idx == 0:  # some backends report 0 when unknown
+                    worst = max(worst, abs(decoded - idx / fps))
                 path = frames_dir / frame_filename(event.label, event, idx / fps, settings.image_format)
                 if not cv2.imwrite(str(path), frame, params):
                     raise RuntimeError(f"Failed to write {path}")
@@ -119,4 +139,4 @@ def _extract_one(cap, fps, duration, size, event, out_dir, settings) -> int:
     finally:
         if clip is not None:
             clip.release()
-    return saved
+    return saved, worst

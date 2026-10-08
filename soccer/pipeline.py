@@ -8,11 +8,9 @@ import shutil
 
 from soccer.annotations import events_for_half, find_annotation_file, load_comments
 from soccer.dropbox import DropboxSharedLink
-from soccer.extract import ExtractionSettings, extract_events
+from soccer.extract import DONE_MARKER, VIDEO_EXTS, ExtractionSettings, extract_events
 from soccer.manifest import Game
 from soccer.storage import download_prefix
-
-DONE_MARKER = "extraction.json"
 
 
 def half_dir(frames_root: pathlib.Path, game: Game, half: int) -> pathlib.Path:
@@ -37,13 +35,13 @@ def annotation_for(annotations_root: pathlib.Path, game: Game) -> pathlib.Path:
 
 
 def download_videos(client: DropboxSharedLink, game: Game, videos_root: pathlib.Path) -> pathlib.Path:
-    """Download the game's .mkv halves into videos_root/<match_id>/."""
+    """Download the game's video halves (.mkv or .mp4) into videos_root/<match_id>/."""
     out = videos_root / game.match_id
     entries = client.list_folder(f"/{game.league}/{game.match_id}")
-    mkvs = [e for e in entries if e[".tag"] == "file" and e["name"].endswith(".mkv")]
-    if not mkvs:
-        raise FileNotFoundError(f"No .mkv files in /{game.league}/{game.match_id}")
-    for e in mkvs:
+    videos = [e for e in entries if e[".tag"] == "file" and e["name"].lower().endswith(VIDEO_EXTS)]
+    if not videos:
+        raise FileNotFoundError(f"No video files in /{game.league}/{game.match_id}")
+    for e in videos:
         n = client.download(f"/{game.league}/{game.match_id}/{e['name']}", out / e["name"], e["size"])
         print(f"    {e['name']}  {'already present' if n == 0 else f'{n / 1e9:.2f} GB'}", flush=True)
     return out
@@ -65,9 +63,9 @@ def extract_game(game: Game, video_dir: pathlib.Path, annotation: pathlib.Path,
     comments = load_comments(annotation)
     summary = {}
     for half in (1, 2):
-        videos = sorted(video_dir.glob(f"*_{half}.mkv"))
-        if not videos:
-            raise FileNotFoundError(f"No *_{half}.mkv in {video_dir}")
+        videos = sorted(v for v in video_dir.glob(f"*_{half}.*") if v.suffix.lower() in VIDEO_EXTS)
+        if len(videos) != 1:
+            raise FileNotFoundError(f"Expected one *_{half} video in {video_dir}, found {[v.name for v in videos]}")
         out = half_dir(frames_root, game, half)
         if (out / DONE_MARKER).is_file():
             summary[half] = json.loads((out / DONE_MARKER).read_text())
@@ -79,7 +77,8 @@ def extract_game(game: Game, video_dir: pathlib.Path, annotation: pathlib.Path,
         summary[half] = {
             "match_id": game.match_id, "half": half, "video": videos[0].name,
             "annotation": annotation.name, "events": stats.events, "frames": stats.frames,
-            "skipped_outside_video": stats.skipped, "settings": settings.__dict__,
+            "skipped_outside_video": stats.skipped, "max_time_error_sec": round(stats.max_time_error_sec, 4),
+            "settings": settings.__dict__,
         }
         (out / DONE_MARKER).write_text(json.dumps(summary[half], indent=2))
         print(f"    half {half}: {stats.events} events, {stats.frames} frames", flush=True)

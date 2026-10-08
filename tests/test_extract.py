@@ -37,6 +37,8 @@ def test_frames_come_from_the_right_seconds(video, tmp_path):
 
     frames = saved_frames(tmp_path / "out")
     assert stats.events == 1 and stats.frames == len(frames) == 6  # seconds 7..12, end exclusive
+    # The decoder's own timestamps agree with the index-based times (exact seeking).
+    assert stats.max_time_error_sec < 0.2
     for p in frames:
         m = FRAME_RE.search(p.name)
         assert m and m.group(1) == "00-10.000"

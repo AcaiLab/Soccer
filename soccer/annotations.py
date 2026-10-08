@@ -77,18 +77,21 @@ def events_for_half(comments: list[dict], half: int) -> list[Event]:
     events = []
     for c in comments:
         ts = c.get("time_stamp") or ""
-        if c.get("half") != half or not ts:
+        try:
+            if int(c.get("half")) != half or not ts:  # some exports store the half as text
+                continue
+            seconds = parse_timestamp(ts)
+        except (TypeError, ValueError):
             continue
         label = sanitize_label(c.get("comments_type"))
-        key = (ts, label)
+        # De-duplicate on the instant, not the text: "45+2:30" and "47:30" are the
+        # same second and would write the same frame files.
+        key = (seconds, label)
         if key in seen:
             continue
         seen.add(key)
-        try:
-            events.append(Event(half, ts, parse_timestamp(ts), label))
-        except ValueError:
-            continue
-    events.sort(key=lambda e: e.seconds)
+        events.append(Event(half, ts, seconds, label))
+    events.sort(key=lambda e: (e.seconds, e.label))
     return events
 
 

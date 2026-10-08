@@ -18,9 +18,11 @@ class FakeEncoder:
         return np.array([np.asarray(im, dtype=np.float32).mean(axis=(0, 1)) for im in images])
 
 
-def write_frames(root, game, half, label, tag, seconds):
+def write_frames(root, game, half, label, tag, seconds, marker=True):
     d = root / f"game_{game}_half_{half}" / "frames" / label
     d.mkdir(parents=True, exist_ok=True)
+    if marker:
+        (root / f"game_{game}_half_{half}" / "extraction.json").write_text('{"settings": {"before_sec": 30}}')
     for s in seconds:
         Image.new("RGB", (4, 4), (s, s, s)).save(d / f"{label}_frame_{tag}_t00-{s:02d}.000.jpg")
 
@@ -65,3 +67,23 @@ def test_split_ignores_games_outside_the_manifest():
     assert split.train.tolist() == [True, False, False, False]
     assert split.val.tolist() == [False, True, False, False]
     assert split.test.tolist() == [False, False, True, False]
+
+
+def test_changed_extraction_settings_invalidate_the_cache(tmp_path):
+    frames, cache = tmp_path / "frames", tmp_path / "cache"
+    write_frames(frames, "01", 1, "corner", "00-10.000", [8, 9, 10])
+    run(frames, cache, [])
+    # Same file names, but the half was re-extracted with another window.
+    (frames / "game_01_half_1" / "extraction.json").write_text('{"settings": {"before_sec": 15}}')
+    made = []
+    *_, reused, encoded = run(frames, cache, made)
+    assert (reused, encoded) == (0, 1)
+
+
+def test_halves_without_a_marker_are_not_encoded(tmp_path, capsys):
+    frames = tmp_path / "frames"
+    write_frames(frames, "01", 1, "corner", "00-10.000", [8, 9])
+    write_frames(frames, "02", 1, "goal", "00-20.000", [19], marker=False)  # interrupted extraction
+    assert {k[0] for k in scan_events(frames)} == {"01"}
+    assert "without extraction.json" in capsys.readouterr().out
+    assert {k[0] for k in scan_events(frames, require_marker=False)} == {"01", "02"}

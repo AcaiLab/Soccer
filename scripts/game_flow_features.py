@@ -14,6 +14,10 @@ Only earlier events of the same match are used. Nothing about later events is
 computed, and categorical columns are left as text so each classifier can fit
 its encoder on training games only (soccer/game_flow.py).
 
+By default the features cover the manifest's matches (configs/games.csv or
+$SOCCER_MANIFEST), wherever they sit in the official splits. --all-leagues
+covers every match of the given official splits instead.
+
 Usage:
     python scripts/game_flow_features.py
     python scripts/game_flow_features.py --all-leagues
@@ -25,7 +29,9 @@ import pathlib
 import pandas as pd
 
 from soccer.annotations import SPLITS, match_minute, parse_timestamp, sanitize_label
-from soccer.config import data_path, load_config
+from soccer.config import data_path, load_config, repo_path
+from soccer.manifest import load_manifest
+from soccer.pipeline import annotation_for
 
 STOPPAGE_EVENTS = {
     "substitution", "injury", "show_added_time",
@@ -101,18 +107,25 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Annotation-only temporal context features.")
     parser.add_argument("--data-dir", default=str(root), help="SoccerReplay JSON root (holds train/valid/test)")
     parser.add_argument("--out-dir", default=str(data_path(cfg, "features") / "game_flow"))
-    parser.add_argument("--all-leagues", action="store_true", help="default: EPL 2021-2022 only")
+    parser.add_argument("--all-leagues", action="store_true",
+                        help="every match in --splits instead of the manifest's matches "
+                             "(for the cross-league annotation-only classifier)")
     parser.add_argument("--splits", nargs="+", default=["train"], choices=list(SPLITS),
-                        help="official SoccerReplay splits to read (default: train only, so the "
-                             "official valid/test matches stay unseen)")
+                        help="with --all-leagues: official splits to read (default: train only, so "
+                             "the official valid/test matches stay unseen)")
     args = parser.parse_args(argv)
 
     import json
 
     data_dir, out_dir = pathlib.Path(args.data_dir), pathlib.Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    league_glob = "*" if args.all_leagues else "england_epl_2021-2022"
-    files = sorted(f for split in args.splits for f in data_dir.glob(f"{split}/{league_glob}/*/*.json"))
+    if args.all_leagues:
+        files = sorted(f for split in args.splits for f in data_dir.glob(f"{split}/*/*/*.json")
+                       if not f.name.startswith("."))
+    else:
+        # The manifest's matches, from whichever official split each one is in,
+        # so validation and test games get annotation features too.
+        files = [annotation_for(data_dir, g) for g in load_manifest(repo_path(cfg, "manifest"))]
     print(f"Found {len(files)} JSON files under {data_dir}")
 
     rows, skipped = [], 0

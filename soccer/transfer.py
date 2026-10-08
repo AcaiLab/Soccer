@@ -15,6 +15,7 @@ rerun resumes where the last one stopped.
 from __future__ import annotations
 
 from soccer.dropbox import DropboxSharedLink
+from soccer.extract import VIDEO_EXTS
 from soccer.manifest import Game
 from soccer.storage import split_s3
 
@@ -63,12 +64,12 @@ def copy_game(client: DropboxSharedLink, game: Game, dest: str, s3=None) -> list
     """Copy both halves of a game; returns (file name, bytes, outcome) per file."""
     bucket, prefix = split_s3(dest.rstrip("/"))
     entries = client.list_folder(f"/{game.league}/{game.match_id}")
-    mkvs = sorted((e for e in entries if e[".tag"] == "file" and e["name"].endswith(".mkv")),
-                  key=lambda e: e["name"])
-    if not mkvs:
-        raise FileNotFoundError(f"No .mkv files in /{game.league}/{game.match_id}")
+    videos = sorted((e for e in entries if e[".tag"] == "file" and e["name"].lower().endswith(VIDEO_EXTS)),
+                    key=lambda e: e["name"])
+    if not videos:
+        raise FileNotFoundError(f"No video files in /{game.league}/{game.match_id}")
     results = []
-    for e in mkvs:
+    for e in videos:
         key = "/".join(p for p in (prefix, game.league, game.match_id, e["name"]) if p)
         outcome = copy_file(client, f"/{game.league}/{game.match_id}/{e['name']}", bucket, key, e["size"], s3)
         results.append((e["name"], e["size"], outcome))

@@ -29,8 +29,10 @@ def data(tmp_path_factory):
         offset = rng.normal(scale=3, size=D)
         for e in range(EVENTS_PER_GAME):
             lab = LABELS[e % len(LABELS)]
-            half = 1 + e % 2
-            seconds = 60 * (e + 1)
+            # Pairs of consecutive events share a half and a timestamp but differ in
+            # label, like corner / lead_to_corner in real matches.
+            half = 1 + (e // 2) % 2
+            seconds = 60 * (e // 2 + 1)
             n = rng.integers(2, T + 1)
             x = np.zeros((T, D), np.float32)
             x[:n] = label_vec[lab] + offset + rng.normal(scale=0.5, size=(n, D))
@@ -110,7 +112,8 @@ def test_multimodal_classification(data):
                                     "--game-flow-features", str(data / "game_flow.csv"), "--out-dir", str(out)])
     report = (out / "multimodal_classification_report.txt").read_text()
     assert "Chosen on validation" in report
-    # every synthetic event has an annotation partner: 6 test games x (15 - 3 "unknown") events
+    # Every synthetic event has an annotation partner, including the pairs that share
+    # a timestamp: 6 test games x (15 - 3 "unknown") events.
     assert "(72 matched events)" in report
     assert len(pd.read_csv(out / "multimodal_results.csv")) == 9
 

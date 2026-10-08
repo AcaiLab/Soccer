@@ -172,7 +172,6 @@ def main(argv=None):
     print(f"Events: {len(tf)} ({n_before - len(tf)} with dropped labels removed), "
           f"games: {len(set(tf.games))}, frames tensor {tf.features.shape}")
 
-    have_flat = True
     if args.flat_features:
         # Per-frame features from extract_frame_features.py (e.g. another model's).
         flat = np.load(flat_path)
@@ -191,11 +190,10 @@ def main(argv=None):
     true_ids = a.ids(tf.labels)
 
     # (A) individual frames
-    if have_flat:
-        cluster_A, row = a.kmeans(flat, flat_labels, "Individual frames", flat_games)
-        idx = np.random.default_rng(seed).choice(len(flat), size=min(N_TSNE_SAMPLE, len(flat)), replace=False)
-        a.label_vs_cluster(a.tsne(flat[idx]), a.ids(flat_labels[idx]), cluster_A[idx],
-                           a.title("A", "Individual Frames", len(flat), row), "A_individual_frames.png")
+    cluster_A, row = a.kmeans(flat, flat_labels, "Individual frames", flat_games)
+    idx = np.random.default_rng(seed).choice(len(flat), size=min(N_TSNE_SAMPLE, len(flat)), replace=False)
+    a.label_vs_cluster(a.tsne(flat[idx]), a.ids(flat_labels[idx]), cluster_A[idx],
+                       a.title("A", "Individual Frames", len(flat), row), "A_individual_frames.png")
 
     # (B) event mean-pool
     feat_mean = mean_pool(tf.features, tf.masks)
