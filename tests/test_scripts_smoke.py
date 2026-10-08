@@ -58,7 +58,7 @@ def data(tmp_path_factory):
     flat_dir = root / "flat"
     flat_dir.mkdir()
     np.save(flat_dir / "m_features.npy", np.stack(feats)[:, 0])
-    pd.DataFrame({"label": labels}).to_csv(flat_dir / "metadata.csv", index=False)
+    pd.DataFrame({"game": gids, "label": labels}).to_csv(flat_dir / "metadata.csv", index=False)
     gf = pd.DataFrame(gf_rows)
     gf.to_csv(root / "game_flow.csv", index=False)
     other = gf.assign(league="spain_laliga_2021-2022", match_id=gf.match_id + "_es")
@@ -73,7 +73,10 @@ def test_cluster_analysis(data):
     cluster_analysis.main(["--features-dir", str(data / "temporal"), "--flat-features",
                            str(data / "flat" / "m_features.npy"), "--out-dir", str(out)])
     metrics = pd.read_csv(out / "clustering_metrics.csv")
-    assert {"ARI", "Purity", "Purity_random"} <= set(metrics.columns) and len(metrics) == 4
+    assert {"ARI", "Purity", "Purity_random", "Game_ARI", "Game_NMI"} <= set(metrics.columns) and len(metrics) == 4
+    # The synthetic per-game offset dominates, as in the real data: clusters follow the game.
+    raw = metrics.set_index("Representation").loc["Event mean-pool"]
+    assert raw["Game_ARI"] > raw["ARI"]
     assert (out / "D_colorings_game_half.png").is_file() and (out / "per_game" / "game_30.png").is_file()
 
 
@@ -94,6 +97,7 @@ def test_event_classification_selects_on_validation(data):
                                "--contrastive-features", str(data / "none"), "--out-dir", str(out)])
     report = (out / "classification_report.txt").read_text()
     assert "Chosen on validation" in report and "majority-class baseline" in report
+    assert "95% interval, resampling test games" in report
     results = pd.read_csv(out / "classification_results.csv")
     assert "Val_accuracy" in results and not any("Test" in c for c in results.columns)
 
@@ -153,5 +157,7 @@ def test_sequence_classifier(data):
 
     out = data / "seq"
     sequence_classifier.main(["--features", str(data / "temporal"), "--out-dir", str(out), "--epochs", "2",
-                              "--hidden-dim", "16", "--device", "cpu"])
-    assert "Chosen on validation" in (out / "sequence_classification_report.txt").read_text()
+                              "--hidden-dim", "16", "--device", "cpu", "--seeds", "1", "2"])
+    report = (out / "sequence_classification_report.txt").read_text()
+    assert "Chosen on validation" in report and "sd over 2 seeds" in report and "resampling test games" in report
+    assert len(pd.read_csv(out / "sequence_test_by_seed.csv")) == 2

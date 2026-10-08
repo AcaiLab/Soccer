@@ -37,7 +37,7 @@ from sklearn.metrics import classification_report  # noqa: E402
 
 from soccer.annotations import match_minute, tag_to_seconds  # noqa: E402
 from soccer.config import data_path, dropped_labels, load_config, repo_path  # noqa: E402
-from soccer.evaluation import select_on_validation, split_by_game  # noqa: E402
+from soccer.evaluation import format_test_summary, select_on_validation, split_by_game  # noqa: E402
 from soccer.features import load_temporal, mean_pool  # noqa: E402
 from soccer.game_flow import CATEGORICAL, FEATURES, encoder  # noqa: E402
 from soccer.manifest import load_manifest  # noqa: E402
@@ -97,14 +97,11 @@ def main(argv=None):
     }
     print(f"Events: train={split.train.sum()} val={split.val.sum()} test={split.test.sum()}")
 
-    rows, chosen = select_on_validation(feature_sets, labels, split, seed)
+    rows, chosen = select_on_validation(feature_sets, labels, split, seed, games=games)
     pd.DataFrame(rows).sort_values("Val_accuracy", ascending=False).to_csv(
         out_dir / "multimodal_results.csv", index=False)
     y_true, y_pred = chosen.pop("y_true"), chosen.pop("y_pred")
-    summary = (f"Chosen on validation: {chosen['Features']} + {chosen['Classifier']}\n"
-               f"Test games: {' '.join(split.test_games)}  ({len(y_true)} matched events)\n"
-               f"Test accuracy {chosen['Test_Accuracy']:.4f}  macro-F1 {chosen['Test_Macro_F1']:.4f}  "
-               f"majority-class baseline {chosen['Test_Majority_baseline']:.4f}\n")
+    summary = format_test_summary(chosen, split, len(y_true), "matched events")
     report = classification_report(y_true, y_pred, zero_division=0)
     (out_dir / "multimodal_classification_report.txt").write_text(summary + "\n" + report)
     print("\n" + summary + "\n" + report)

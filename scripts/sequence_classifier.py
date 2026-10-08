@@ -11,7 +11,11 @@ consume the full (60, 768) sequence, using temporal ordering:
 
 Protocol (leak-free, by game, from the manifest):
     train games fit the weights, val games pick the stopping epoch and the
-    model, and only the chosen model is scored on the test games.
+    model, and only the chosen model is scored on the test games. With
+    --seeds, every model is trained once per seed, the model with the best
+    mean validation accuracy is chosen, and its test accuracy is reported as
+    mean and standard deviation over seeds plus a 95% interval from
+    resampling test games.
 Per-dimension standardisation uses training frames only.
 
 Usage:
@@ -31,7 +35,7 @@ from soccer.config import data_path, dropped_labels, load_config, repo_path
 from soccer.evaluation import split_by_game
 from soccer.features import load_temporal
 from soccer.manifest import load_manifest
-from soccer.metrics import classification_scores
+from soccer.metrics import bootstrap_ci, classification_scores
 
 
 def masked_mean(h, m):
@@ -106,13 +110,11 @@ def main(argv=None):
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--hidden-dim", type=int, default=256)
-    parser.add_argument("--seed", type=int, default=cfg["seed"])
+    parser.add_argument("--seeds", type=int, nargs="+", default=[cfg["seed"]])
     parser.add_argument("--keep-all-labels", action="store_true")
     parser.add_argument("--device", default=None)
     args = parser.parse_args(argv)
 
-    torch.manual_seed(args.seed)
-    np.random.seed(args.seed)
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
     out_dir = pathlib.Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -135,10 +137,10 @@ def main(argv=None):
     feats = ((tf.features - mu) / sd) * masks[:, :, None]  # keep padding at zero
     X, M, Y = torch.tensor(feats), torch.tensor(masks), torch.tensor(y, dtype=torch.long)
 
-    def loader(mask, shuffle):
+    def loader(mask, shuffle, seed=0):
         ds = torch.utils.data.TensorDataset(X[mask & keep], M[mask & keep], Y[mask & keep])
         return torch.utils.data.DataLoader(ds, batch_size=args.batch_size, shuffle=shuffle,
-                                           generator=torch.Generator().manual_seed(args.seed))
+                                           generator=torch.Generator().manual_seed(seed))
 
     def predict(model, mask):
         model.eval()
@@ -146,9 +148,9 @@ def main(argv=None):
             return torch.cat([model(xb.to(device), mb.to(device)).argmax(1).cpu()
                               for xb, mb, _ in loader(mask, False)]).numpy()
 
-    results = {}
-    for name, cls in MODELS.items():
-        torch.manual_seed(args.seed)
+    def train(cls, seed):
+        torch.manual_seed(seed)
+        np.random.seed(seed)
         model = cls(tf.features.shape[2], args.hidden_dim, len(classes), tf.features.shape[1]).to(device)
         opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
         crit = nn.CrossEntropyLoss()
@@ -156,7 +158,7 @@ def main(argv=None):
         for epoch in range(1, args.epochs + 1):
             stopped = epoch
             model.train()
-            for xb, mb, yb in loader(split.train, True):
+            for xb, mb, yb in loader(split.train, True, seed):
                 opt.zero_grad()
                 crit(model(xb.to(device), mb.to(device)), yb.to(device)).backward()
                 opt.step()
@@ -169,25 +171,50 @@ def main(argv=None):
                 if wait >= args.patience:
                     break
         model.load_state_dict(best_state)
-        results[name] = {"model": model, "val_acc": best_val, "stopped": stopped}
-        print(f"{name:14s} stopped@{stopped:3d}  best val accuracy={best_val:.1%}")
+        return model, best_val, stopped
 
-    chosen = max(results, key=lambda n: results[n]["val_acc"])
-    test_pred = predict(results[chosen]["model"], split.test)
     y_test, y_train = y[split.test & keep], y[split.train & keep]
-    scores = classification_scores(y_test, test_pred, y_train)
+    test_games = tf.games[split.test & keep]
+    rows, runs = [], {}
+    for name, cls in MODELS.items():
+        for seed in args.seeds:
+            model, val_acc, stopped = train(cls, seed)
+            runs[(name, seed)] = model
+            rows.append({"model": name, "seed": seed, "val_acc": val_acc, "stopped_epoch": stopped})
+            print(f"{name:14s} seed {seed}  stopped@{stopped:3d}  best val accuracy={val_acc:.1%}")
+    df = pd.DataFrame(rows)
+    by_model = df.groupby("model")["val_acc"].agg(["mean", "std"]).sort_values("mean", ascending=False)
+    chosen = by_model.index[0]
 
-    pd.DataFrame([{"model": n, "val_acc": r["val_acc"], "stopped_epoch": r["stopped"]}
-                  for n, r in results.items()]).sort_values("val_acc", ascending=False).to_csv(
-        out_dir / "sequence_results.csv", index=False)
-    summary = (f"Chosen on validation: {chosen}\nTest games: {' '.join(split.test_games)}  ({len(y_test)} events)\n"
-               f"Test accuracy {scores['Accuracy']:.4f}  macro-F1 {scores['Macro_F1']:.4f}  "
-               f"majority-class baseline {scores['Majority_baseline']:.4f}\n")
-    present = sorted(set(y_test) | set(test_pred))
-    report = classification_report(y_test, test_pred, labels=present,
+    # Test only the chosen model, once per seed.
+    test_rows, preds = [], []
+    for seed in args.seeds:
+        pred = predict(runs[(chosen, seed)], split.test)
+        preds.append(pred)
+        test_rows.append({"seed": seed, **classification_scores(y_test, pred, y_train)})
+    test_df = pd.DataFrame(test_rows)
+    ci = bootstrap_ci(np.tile(y_test, len(preds)), np.concatenate(preds), np.tile(test_games, len(preds)),
+                      seed=args.seeds[0])
+
+    df.to_csv(out_dir / "sequence_results.csv", index=False)
+    test_df.to_csv(out_dir / "sequence_test_by_seed.csv", index=False)
+    acc, f1 = test_df["Accuracy"], test_df["Macro_F1"]
+    spread = (lambda v: f" +/- {v.std(ddof=1):.4f} (sd over {len(v)} seeds)") if len(args.seeds) > 1 else (lambda v: "")
+    summary = (f"Chosen on validation: {chosen} (mean val accuracy {by_model.loc[chosen, 'mean']:.4f} "
+               f"over {len(args.seeds)} seed(s))\n"
+               f"Test games: {' '.join(split.test_games)}  ({len(y_test)} events)\n"
+               f"Test accuracy {acc.mean():.4f}{spread(acc)}  macro-F1 {f1.mean():.4f}{spread(f1)}  "
+               f"majority-class baseline {test_df['Majority_baseline'].iloc[0]:.4f}\n"
+               f"95% interval, resampling test games (all seeds pooled): accuracy "
+               f"{ci['Accuracy_CI'][0]:.3f}-{ci['Accuracy_CI'][1]:.3f}, macro-F1 "
+               f"{ci['Macro_F1_CI'][0]:.3f}-{ci['Macro_F1_CI'][1]:.3f}\n")
+    present = sorted(set(y_test) | set(preds[0]))
+    report = classification_report(y_test, preds[0], labels=present,
                                    target_names=[classes[i] for i in present], zero_division=0)
-    (out_dir / "sequence_classification_report.txt").write_text(summary + "\n" + report)
-    print("\n" + summary + "\n" + report)
+    details = (f"\nValidation accuracy by model (mean, sd over seeds):\n{by_model.to_string()}\n\n"
+               f"Per-class report (seed {args.seeds[0]}):\n{report}")
+    (out_dir / "sequence_classification_report.txt").write_text(summary + details)
+    print("\n" + summary + details)
 
 
 if __name__ == "__main__":

@@ -19,7 +19,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.svm import LinearSVC
 
 from soccer.manifest import Game, assert_disjoint, game_nums, normalize_game_id
-from soccer.metrics import classification_scores
+from soccer.metrics import bootstrap_ci, classification_scores
 
 
 @dataclass
@@ -66,11 +66,12 @@ def sklearn_classifiers(seed: int) -> dict:
 
 
 def select_on_validation(feature_sets: dict[str, np.ndarray], labels: np.ndarray, split: Split,
-                         seed: int) -> tuple[list[dict], dict]:
+                         seed: int, games: np.ndarray | None = None) -> tuple[list[dict], dict]:
     """Fit every (features, classifier) pair on train, rank on validation, test the winner.
 
     Returns (validation rows for every candidate, result for the chosen one with
-    test metrics and predictions).
+    test metrics, predictions and, if `games` is given, 95% intervals from
+    resampling test games).
     """
     rows, best = [], None
     for feat_name, X in feature_sets.items():
@@ -90,4 +91,20 @@ def select_on_validation(feature_sets: dict[str, np.ndarray], labels: np.ndarray
     test_scores = classification_scores(labels[split.test], test_pred, labels[split.train])
     chosen = {**best["row"], **{f"Test_{k}": v for k, v in test_scores.items()},
               "y_true": labels[split.test], "y_pred": test_pred}
+    if games is not None:
+        chosen.update({f"Test_{k}": v for k, v in
+                       bootstrap_ci(labels[split.test], test_pred, games[split.test], seed=seed).items()})
     return rows, chosen
+
+
+def format_test_summary(chosen: dict, split: Split, n_events: int, kind: str = "events") -> str:
+    """The lines every classifier report starts with."""
+    ci = ""
+    if "Test_Accuracy_CI" in chosen:
+        (alo, ahi), (flo, fhi) = chosen["Test_Accuracy_CI"], chosen["Test_Macro_F1_CI"]
+        ci = (f"95% interval, resampling test games: accuracy {alo:.3f}-{ahi:.3f}, "
+              f"macro-F1 {flo:.3f}-{fhi:.3f}\n")
+    return (f"Chosen on validation: {chosen['Features']} + {chosen['Classifier']}\n"
+            f"Test games: {' '.join(split.test_games)}  ({n_events} {kind})\n"
+            f"Test accuracy {chosen['Test_Accuracy']:.4f}  macro-F1 {chosen['Test_Macro_F1']:.4f}  "
+            f"majority-class baseline {chosen['Test_Majority_baseline']:.4f}\n" + ci)

@@ -31,7 +31,7 @@ import pandas as pd  # noqa: E402
 from sklearn.metrics import ConfusionMatrixDisplay, classification_report, confusion_matrix  # noqa: E402
 
 from soccer.config import data_path, dropped_labels, load_config, repo_path  # noqa: E402
-from soccer.evaluation import select_on_validation, split_by_game  # noqa: E402
+from soccer.evaluation import format_test_summary, select_on_validation, split_by_game  # noqa: E402
 from soccer.features import POOLING, load_temporal  # noqa: E402
 from soccer.manifest import assert_disjoint, load_manifest  # noqa: E402
 
@@ -82,15 +82,12 @@ def main(argv=None):
     if cont is not None:
         feature_sets["Contrastive (triplet head)"] = cont
 
-    rows, chosen = select_on_validation(feature_sets, tf.labels, split, seed)
+    rows, chosen = select_on_validation(feature_sets, tf.labels, split, seed, games=tf.games)
     pd.DataFrame(rows).sort_values("Val_accuracy", ascending=False).to_csv(
         out_dir / "classification_results.csv", index=False)
 
     y_true, y_pred = chosen.pop("y_true"), chosen.pop("y_pred")
-    summary = (f"Chosen on validation: {chosen['Features']} + {chosen['Classifier']}\n"
-               f"Test games: {' '.join(split.test_games)}  ({len(y_true)} events)\n"
-               f"Test accuracy {chosen['Test_Accuracy']:.4f}  macro-F1 {chosen['Test_Macro_F1']:.4f}  "
-               f"majority-class baseline {chosen['Test_Majority_baseline']:.4f}\n")
+    summary = format_test_summary(chosen, split, len(y_true), "events")
     present = sorted(set(y_true) | set(y_pred))
     report = classification_report(y_true, y_pred, labels=present, zero_division=0)
     (out_dir / "classification_report.txt").write_text(summary + "\n" + report)
