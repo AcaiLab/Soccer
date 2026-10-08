@@ -198,6 +198,22 @@ Found by comparing every JSON file name in SoccerReplay-1988 (1,988 matches) wit
 - **Augmentation:** none is used, so augmented views cannot cross a split.
 - **Overlapping windows:** neighbouring events in the same match share frames. That stays inside one match and cannot cross a match-level split. It does make within-match events look more alike.
 
+### Found in the code review of 2026-10-08 (after the first clean 30-game run)
+
+Most of these were introduced or exposed by the refactor itself, and all are fixed. B12 is a leak; the others change results, so the 30-game results were rerun (robustness run, 5 seeds × 2 splits).
+
+| # | Finding | Effect | Fix |
+|---|---|---|---|
+| B12 | `split_by_game` treated every game outside val/test as training data | Features holding extra games (e.g. 65 extracted, 30-game manifest) would silently enlarge the training set | `d7aef22`: only manifest games are used; every script loads features restricted to them |
+| B13 | Sequence models' "shuffled" batches came in the same order every epoch (a fresh generator with the same seed per epoch) | The first clean run's sequence scores (BiLSTM 40.2%) came from unshuffled-in-effect training | `921d2b1`: one generator per run |
+| B14 | Multimodal matching keyed on (match, half, minute) dropped one of two events sharing a minute | 14 of 1,929 events lost in the 30-game run (half of them in a test built to catch it) | `921d2b1`: label added to the key; regression test fails on the old code |
+| B15 | `game_flow_features.py` read only the official train split | In the 65-game set, the 15 validation and test matches (official valid/test) would have had no annotation features | `a8f0433`: covers the manifest's matches wherever they are |
+| B16 | Events de-duplicated on timestamp text ("45+2:30" vs "47:30" are the same second) | Same-second duplicates written into the same files | `a8f0433`: de-duplicated on the instant |
+| B17 | Halves with an interrupted extraction (no marker) were picked up for encoding | Incomplete events could enter the features | `a8f0433`: such halves are skipped with a warning |
+| B18 | The pooled and multimodal classifiers ignored the seed | Spread over seeds understated their variability | `32c752f`: every classifier takes the seed |
+
+Seek accuracy is now checked on every new video: each half's marker records the largest gap between a frame's decoded timestamp and its index-based time (`max_time_error_sec`).
+
 ---
 
 ## Recommended split
