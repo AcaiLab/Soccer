@@ -3,7 +3,8 @@
 Credentials never live in code. They come from, in order:
 
   1. environment variables
-       DROPBOX_TOKEN (or DROPBOX_TOKEN_FILE, a path to a file holding it)
+       DROPBOX_TOKEN, or a token file: the --token-file option if given,
+       else DROPBOX_TOKEN_FILE, else tmp_dbx/token.txt
        DROPBOX_SHARED_URL
        DROPBOX_LINK_PASSWORD
   2. AWS SSM Parameter Store, if SOCCER_SSM_PREFIX is set:
@@ -21,6 +22,7 @@ import time
 import requests
 
 API = "https://api.dropboxapi.com/2"
+DEFAULT_TOKEN_FILE = "tmp_dbx/token.txt"
 CONTENT = "https://content.dropboxapi.com/2"
 
 
@@ -56,7 +58,7 @@ class DropboxSharedLink:
     @classmethod
     def from_env(cls, token_file: str | os.PathLike | None = None) -> "DropboxSharedLink":
         token = _setting("DROPBOX_TOKEN", "token")
-        token_file = token_file or os.environ.get("DROPBOX_TOKEN_FILE")
+        token_file = token_file or os.environ.get("DROPBOX_TOKEN_FILE") or DEFAULT_TOKEN_FILE
         if not token and token_file and pathlib.Path(token_file).is_file():
             token = pathlib.Path(token_file).read_text(encoding="utf-8").strip()
         url = _setting("DROPBOX_SHARED_URL", "shared_url")

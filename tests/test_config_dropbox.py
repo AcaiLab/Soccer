@@ -57,3 +57,12 @@ def test_check_detects_expired_tokens():
         DropboxSharedLink("t", "u")._check(FakeResponse(401, '{"error": "expired_access_token"}'))
     with pytest.raises(RuntimeError, match="HTTP 409"):
         DropboxSharedLink("t", "u")._check(FakeResponse(409, "path/not_found"))
+
+
+def test_token_file_env_is_used_when_no_option_given(no_dropbox_env, monkeypatch, tmp_path):
+    token = tmp_path / "server_token"
+    token.write_text("from-env\n")
+    monkeypatch.setenv("DROPBOX_SHARED_URL", "https://example.invalid/link")
+    monkeypatch.setenv("DROPBOX_TOKEN_FILE", str(token))
+    assert DropboxSharedLink.from_env()._token == "from-env"
+    assert DropboxSharedLink.from_env(token_file=None)._token == "from-env"

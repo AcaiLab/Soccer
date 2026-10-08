@@ -32,8 +32,8 @@ def main(argv=None):
     parser.add_argument("--dest", default=None, help="s3://bucket/prefix (default: <s3_root>/videos)")
     parser.add_argument("--games", nargs="+", default=None, help="game numbers (default: all in manifest)")
     parser.add_argument("--workers", type=int, default=2, help="games copied in parallel")
-    parser.add_argument("--token-file", default="tmp_dbx/token.txt",
-                        help="Dropbox token file, used if DROPBOX_TOKEN is not set")
+    parser.add_argument("--token-file", default=None,
+                        help="Dropbox token file if DROPBOX_TOKEN is not set (default: $DROPBOX_TOKEN_FILE, else tmp_dbx/token.txt)")
     args = parser.parse_args(argv)
 
     dest = args.dest or s3_uri(cfg, "videos")

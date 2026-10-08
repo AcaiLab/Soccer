@@ -26,8 +26,8 @@ def main(argv=None):
     cfg = load_config()
     parser = argparse.ArgumentParser(description="Download SoccerReplay-1988 videos for manifest games.")
     parser.add_argument("--games", nargs="+", default=None, help="game numbers (default: all in manifest)")
-    parser.add_argument("--token-file", default="tmp_dbx/token.txt",
-                        help="Dropbox token file, used if DROPBOX_TOKEN is not set")
+    parser.add_argument("--token-file", default=None,
+                        help="Dropbox token file if DROPBOX_TOKEN is not set (default: $DROPBOX_TOKEN_FILE, else tmp_dbx/token.txt)")
     args = parser.parse_args(argv)
 
     games = load_manifest(repo_path(cfg, "manifest"), repo_path(cfg, "excluded_matches"))

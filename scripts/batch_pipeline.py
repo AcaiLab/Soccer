@@ -48,8 +48,8 @@ def main(argv=None):
                         help="no download: extract from videos already in the videos folder (implies --keep-videos)")
     parser.add_argument("--from-s3", nargs="?", const="", default=None, metavar="URI",
                         help="read videos from S3 (default URI: <s3_root>/videos) instead of Dropbox")
-    parser.add_argument("--token-file", default="tmp_dbx/token.txt",
-                        help="Dropbox token file, used if DROPBOX_TOKEN is not set")
+    parser.add_argument("--token-file", default=None,
+                        help="Dropbox token file if DROPBOX_TOKEN is not set (default: $DROPBOX_TOKEN_FILE, else tmp_dbx/token.txt)")
     args = parser.parse_args(argv)
 
     games = load_manifest(repo_path(cfg, "manifest"), repo_path(cfg, "excluded_matches"))
