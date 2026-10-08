@@ -6,7 +6,7 @@ import pytest
 from moto import mock_aws
 
 import soccer.transfer as transfer
-from soccer.annotations import install_split_zip
+from soccer.annotations import find_annotation_file, install_split_zip
 from soccer.config import load_config, s3_uri
 from soccer.manifest import Game
 from soccer.pipeline import fetch_videos_from_s3
@@ -106,6 +106,29 @@ def test_s3_uri_requires_a_root(monkeypatch):
     monkeypatch.setenv("SOCCER_S3_ROOT", "my-bucket")
     with pytest.raises(ValueError):
         s3_uri(cfg, "videos")
+
+
+def test_install_split_zip_drops_macos_metadata(tmp_path):
+    """The real valid/test zips carry '._<name>.json' stubs and .DS_Store files."""
+    zip_path = tmp_path / "test.zip"
+    match = "test/england_epl_2021-2022/2021-08-22_x"
+    with zipfile.ZipFile(zip_path, "w") as z:
+        z.writestr(f"{match}/2021-08-22_A_1-1_B_abc.json", '{"comments": []}')
+        z.writestr(f"{match}/._2021-08-22_A_1-1_B_abc.json", b"\x00\x05\x16\x07 macOS stub")
+        z.writestr("test/england_epl_2021-2022/.DS_Store", b"\x00")
+        z.writestr(f"__MACOSX/{match}/._2021-08-22_A_1-1_B_abc.json", b"\x00")
+    assert install_split_zip(zip_path, "test", tmp_path / "json") == 1
+    folder = tmp_path / "json" / "test" / "england_epl_2021-2022"
+    assert sorted(p.name for p in folder.rglob("*")) == ["2021-08-22_A_1-1_B_abc.json", "2021-08-22_x"]
+
+
+def test_annotation_lookup_ignores_hidden_files(tmp_path):
+    folder = tmp_path / "train" / "england_epl_2021-2022" / "m1"
+    folder.mkdir(parents=True)
+    (folder / "._m1.json").write_bytes(b"\x00 stub")  # sorts first
+    (folder / "m1.json").write_text('{"comments": []}')
+    path, split = find_annotation_file(tmp_path, "england_epl_2021-2022", "m1")
+    assert path.name == "m1.json" and split == "train"
 
 
 @pytest.mark.parametrize("top", ["", "train/", "SoccerReplay/train/"])

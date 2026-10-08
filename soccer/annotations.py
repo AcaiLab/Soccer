@@ -102,7 +102,9 @@ def find_annotation_file(annotations_root: str | pathlib.Path, league: str,
     root = pathlib.Path(annotations_root)
     for split in SPLITS:
         folder = root / split / league / match_id
-        jsons = sorted(folder.glob("*.json")) if folder.is_dir() else []
+        # Hidden files are skipped: zips made on macOS carry "._<name>.json"
+        # metadata stubs that would otherwise sort before the real file.
+        jsons = sorted(p for p in folder.glob("*.json") if not p.name.startswith(".")) if folder.is_dir() else []
         if jsons:
             return jsons[0], split
     return None
@@ -129,9 +131,11 @@ def install_split_zip(zip_path: str | pathlib.Path, split: str, annotations_root
     with tempfile.TemporaryDirectory() as tmp:
         with zipfile.ZipFile(zip_path) as z:
             z.extractall(tmp)
-        leagues = [d for d in pathlib.Path(tmp).rglob("*") if d.is_dir() and LEAGUE_DIR_RE.match(d.name)]
+        leagues = [d for d in pathlib.Path(tmp).rglob("*") if d.is_dir() and LEAGUE_DIR_RE.match(d.name)
+                   and "__MACOSX" not in d.parts]
         if not leagues:
             raise ValueError(f"{zip_path}: no league folders (like england_epl_2021-2022) inside")
         for league in leagues:
-            shutil.copytree(league, dest / league.name, dirs_exist_ok=True)
-    return sum(1 for _ in dest.glob("*/*/*.json"))
+            shutil.copytree(league, dest / league.name, dirs_exist_ok=True,
+                            ignore=shutil.ignore_patterns("._*", ".DS_Store"))
+    return sum(1 for p in dest.glob("*/*/*.json") if not p.name.startswith("."))
