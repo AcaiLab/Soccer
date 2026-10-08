@@ -28,7 +28,8 @@ import pandas as pd
 
 from soccer.config import REPO_ROOT, data_path, load_config
 
-SPLITS = {"default": "configs/games.csv", "venue": "configs/games_venue_split.csv"}
+SPLITS = {"default": "configs/games.csv", "venue": "configs/games_venue_split.csv",
+          "epl2122": "configs/games_epl2122.csv"}
 
 
 def run(script, args, manifest):
@@ -60,7 +61,7 @@ def main(argv=None):
     cfg = load_config()
     parser = argparse.ArgumentParser(description="Seeds x splits robustness run.")
     parser.add_argument("--seeds", type=int, nargs="+", default=[42, 43, 44, 45, 46])
-    parser.add_argument("--splits", nargs="+", choices=list(SPLITS), default=list(SPLITS))
+    parser.add_argument("--splits", nargs="+", choices=list(SPLITS), default=["default", "venue"])
     parser.add_argument("--device", default=None)
     args = parser.parse_args(argv)
 
