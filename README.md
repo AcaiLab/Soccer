@@ -79,7 +79,7 @@ python run_dino_pipeline.py --stages frames --local-only # extract from videos a
 | Stage | Scripts | Hardware |
 |---|---|---|
 | `frames` | `batch_pipeline.py`: download, extract ±30 s at 1 fps per event (only events of the half each video holds), delete video | CPU, disk |
-| `features` | `temporal_clip_features.py` (per-event `(60, 768)` DINOv2 tensors), `extract_frame_features.py` (per-frame) | GPU (CPU works, ~11 min per game) |
+| `features` | `temporal_clip_features.py` (per-event `(60, 768)` DINOv2 tensors), `extract_frame_features.py` (per-frame) | GPU (CPU works: ~3 min per game on 16 cores of the server, measured at 23 frames/s) |
 | `cluster` | `cluster_analysis.py`, `within_game_clustering.py` | CPU |
 | `contrastive` | `contrastive_training.py` (train games only), `evaluate_contrastive.py` (held-out vs train reported separately) | GPU or CPU |
 | `classify` | `event_classification.py`, `sequence_classifier.py`, `game_flow_features.py` + `multimodal_classification.py`, `temporal_event_classifier.py` | CPU (sequence models prefer GPU) |
@@ -91,6 +91,25 @@ Every reported number comes with what it should be compared against:
 - **Clustering** is scored against the event labels (ARI, NMI, purity next to its shuffled-cluster purity) *and* against game identity (`Game_ARI`, `Game_NMI`). `Game_ARI` well above `ARI` means the clusters follow the match more than the event.
 - **Classifiers** report test accuracy and macro-F1 with the majority-class accuracy and a 95% interval from resampling whole test games.
 - **Seeds**: `sequence_classifier.py --seeds 42 43 44` reports mean and sd over seeds. `scripts/robustness.py` repeats the contrastive head and all classifiers over 5 seeds for the match-level and leave-venue-out splits (add `--splits epl2122` for the 65-game set) and writes `results/robustness/summary.md`.
+
+### The 65-game subset (SoccerReplay's official split)
+
+`configs/games_epl2122.csv` lists all 65 EPL 2021-22 matches with the official split (train 50, val 7, test 8). Frames are shared with the 30-game run; only features and results get their own folders, so the 30-game results stay untouched.
+
+```bash
+export SOCCER_MANIFEST=configs/games_epl2122.csv
+export SOCCER_FEATURES_DIR=$SOCCER_DATA_ROOT/runs/epl2122/features
+export SOCCER_RESULTS_DIR=$SOCCER_DATA_ROOT/runs/epl2122/results
+python scripts/batch_pipeline.py                             # only the games without frames yet
+python scripts/temporal_clip_features.py --device auto       # halves already encoded are reused
+python scripts/cluster_analysis.py
+python scripts/within_game_clustering.py --features-dir $SOCCER_FEATURES_DIR/temporal_dinov2-base
+python scripts/game_flow_features.py
+python scripts/robustness.py --splits epl2122 --device cpu   # contrastive head and classifiers, 5 seeds
+python scripts/report.py                                     # writes $SOCCER_RESULTS_DIR/report.md
+```
+
+`--device auto` uses the GPU only when it has 4 GB free, and the CPU otherwise (a shared GPU is often full).
 
 ### Where it runs
 
