@@ -214,6 +214,25 @@ Most of these were introduced or exposed by the refactor itself, and all are fix
 
 Seek accuracy is now checked on every new video: each half's marker records the largest gap between a frame's decoded timestamp and its index-based time (`max_time_error_sec`).
 
+### Found after the 65-game run (2026-10-09): frame timing in 8 halves (open)
+
+**B19.** The timing check above flags 8 of the 70 halves extracted with it (games 31–65). Their decoded timestamps differ from the index-based time by up to:
+
+| Half | Split | Largest gap |
+|---|---|---|
+| game_32_half_1 | test | 13.9 s |
+| game_35_half_1, game_35_half_2 | val | 45.1 s, 44.9 s |
+| game_40_half_1 | train | 0.8 s |
+| game_46_half_1, game_46_half_2 | val | 11.1 s, 8.6 s |
+| game_55_half_2 | val | 13.8 s |
+| game_63_half_1 | train | 13.8 s |
+
+- **What it could mean.** If the timestamps are right (footage missing from the recording, so the frame count runs behind), the saved frames of some events are seconds to a minute away from the annotated moment: label noise. If the frame count is right (a timestamp glitch in continuous footage), nothing is wrong. The marker only keeps the largest gap, so it cannot tell these apart.
+- **How much data.** After junk labels are dropped: 255 of 4,337 events (5.9%). Training 56 of 3,329 (1.7%), **validation 166 of 472 (35.2%)**, test 33 of 536 (6.2%). Validation picks the models, so this matters most there.
+- **Not checked.** The 60 halves of games 01–30 were extracted before the check existed. Game 01, the only video still on disk, is exact: 0.000 s at every 120 s sample and exactly 0.04 s between consecutive frames.
+- **A content check was inconclusive.** Comparing each half's first 10 s with the other halves' first 10 s (all start at kick-off) does not single out the flagged halves; a jump in mid-half would not show there anyway.
+- **Next.** `scripts/audit_video_timing.py --scan` decodes a half completely, locates every timestamp jump and saves the frames on both sides of it, which settles the question. It needs the videos again, so a Dropbox credential. If footage is missing, re-extract those halves by timestamp instead of by index and rerun. Every report now states this check (`scripts/report.py`, "Frame timing check").
+
 ---
 
 ## Recommended split
