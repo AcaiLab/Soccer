@@ -83,6 +83,8 @@ def describe_time_check(check: dict) -> str:
     if check["unchecked"]:
         text += f" ({len(check['unchecked'])} extracted before the check existed)"
     flagged = check["flagged"]
+    if not checked:
+        return text + ", so their frame timing is unverified"
     if not flagged:
         return text + "; none is above the tolerance"
     worst = ", ".join(f"{name} {seconds:.1f}s" for name, seconds in sorted(flagged.items()))

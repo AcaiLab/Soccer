@@ -35,6 +35,9 @@ def test_time_check_counts_flagged_and_unchecked_halves(tmp_path):
         "2 of 3 halves have a frame-timing check (1 extracted before the check existed); "
         "1 above the tolerance, holding 33 of 94 events: game_02_half_2 13.9s")
     assert describe_time_check(time_check(tmp_path, {"02"})).endswith("game_02_half_2 13.9s")
+    assert describe_time_check(time_check(tmp_path, {"01"})) == (
+        "0 of 1 halves have a frame-timing check (1 extracted before the check existed), "
+        "so their frame timing is unverified")
 
 
 def write_video(path, frames=100, fps=25.0):
