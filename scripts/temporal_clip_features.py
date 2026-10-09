@@ -35,7 +35,7 @@ import numpy as np
 
 from soccer.config import data_path, load_config, repo_path
 from soccer.encoding import encode_cached, pick_device, save_outputs
-from soccer.frames import scan_events
+from soccer.frames import describe_time_check, scan_events, time_check
 from soccer.manifest import load_manifest
 
 
@@ -71,6 +71,7 @@ def main(argv=None):
     n_per = [len(v) for v in events.values()]
     print(f"Found {len(events)} events across {len({k[2] for k in events})} labels; "
           f"frames per event min={min(n_per)} max={max(n_per)} mean={np.mean(n_per):.1f}")
+    print(describe_time_check(time_check(frames_root, wanted)), flush=True)
 
     padded, masks, keys, n_frames, reused, encoded = encode_cached(
         lambda: build_encoder(args.model, device), events, args.max_frames, args.batch_size,

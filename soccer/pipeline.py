@@ -57,15 +57,21 @@ def fetch_videos_from_s3(videos_uri: str, game: Game, videos_root: pathlib.Path)
     return out
 
 
+def half_video(video_dir: pathlib.Path, half: int) -> pathlib.Path:
+    """The one video file holding `half` (*_1.mkv, *_2.mkv, or .mp4) in a game's folder."""
+    videos = sorted(v for v in video_dir.glob(f"*_{half}.*") if v.suffix.lower() in VIDEO_EXTS)
+    if len(videos) != 1:
+        raise FileNotFoundError(f"Expected one *_{half} video in {video_dir}, found {[v.name for v in videos]}")
+    return videos[0]
+
+
 def extract_game(game: Game, video_dir: pathlib.Path, annotation: pathlib.Path,
                  frames_root: pathlib.Path, settings: ExtractionSettings) -> dict:
     """Extract both halves and write a marker recording what was done."""
     comments = load_comments(annotation)
     summary = {}
     for half in (1, 2):
-        videos = sorted(v for v in video_dir.glob(f"*_{half}.*") if v.suffix.lower() in VIDEO_EXTS)
-        if len(videos) != 1:
-            raise FileNotFoundError(f"Expected one *_{half} video in {video_dir}, found {[v.name for v in videos]}")
+        video = half_video(video_dir, half)
         out = half_dir(frames_root, game, half)
         if (out / DONE_MARKER).is_file():
             summary[half] = json.loads((out / DONE_MARKER).read_text())
@@ -73,9 +79,9 @@ def extract_game(game: Game, video_dir: pathlib.Path, annotation: pathlib.Path,
         if out.exists():
             shutil.rmtree(out)  # partial output from an interrupted run
         events = events_for_half(comments, half)
-        stats = extract_events(videos[0], events, out, settings)
+        stats = extract_events(video, events, out, settings)
         summary[half] = {
-            "match_id": game.match_id, "half": half, "video": videos[0].name,
+            "match_id": game.match_id, "half": half, "video": video.name,
             "annotation": annotation.name, "events": stats.events, "frames": stats.frames,
             "skipped_outside_video": stats.skipped, "max_time_error_sec": round(stats.max_time_error_sec, 4),
             "settings": settings.__dict__,

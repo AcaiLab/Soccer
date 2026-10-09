@@ -1,3 +1,5 @@
+import json
+
 import pandas as pd
 import pytest
 from report import main, paired
@@ -39,9 +41,25 @@ def test_paired_differences_are_computed_within_seeds(tmp_path):
 
 def test_report_contains_every_section(tmp_path):
     write_results(tmp_path)
-    main(["--results", str(tmp_path)])
+    main(["--results", str(tmp_path), "--frames", str(tmp_path / "no_frames_here")])
     text = (tmp_path / "report.md").read_text(encoding="utf-8")
     assert "| Event mean-pool | 0.030 | 0.190 |" in text
     assert "+0.065" in text and "(2/2 seeds up)" in text          # contrastive change, paired
     assert "0.250-0.350" in text                                   # game-resampled interval
     assert "sequence minus pooled accuracy +0.080" in text
+    assert "Frame timing" not in text                              # no frames, no timing section
+
+
+def test_report_states_the_frame_timing_check(tmp_path, monkeypatch):
+    monkeypatch.delenv("SOCCER_MANIFEST", raising=False)  # default manifest: games 01-30
+    write_results(tmp_path)
+    frames = tmp_path / "frames"
+    for name, error in [("game_01_half_1", None), ("game_01_half_2", 0.0), ("game_02_half_1", 45.08)]:
+        (frames / name / "frames").mkdir(parents=True)
+        info = {"events": 30} if error is None else {"events": 30, "max_time_error_sec": error}
+        (frames / name / "extraction.json").write_text(json.dumps(info))
+    main(["--results", str(tmp_path), "--frames", str(frames)])
+    text = (tmp_path / "report.md").read_text(encoding="utf-8")
+    assert "## Frame timing check" in text
+    assert ("2 of 3 halves have a frame-timing check (1 extracted before the check existed); 1 above the "
+            "tolerance, holding 30 of 90 events: game_02_half_1 45.1s.") in text
