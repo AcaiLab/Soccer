@@ -69,15 +69,24 @@ def test_split_ignores_games_outside_the_manifest():
     assert split.test.tolist() == [False, False, True, False]
 
 
-def test_changed_extraction_settings_invalidate_the_cache(tmp_path):
+def test_re_extracted_pictures_invalidate_the_cache_even_with_the_same_names(tmp_path):
     frames, cache = tmp_path / "frames", tmp_path / "cache"
     write_frames(frames, "01", 1, "corner", "00-10.000", [8, 9, 10])
     run(frames, cache, [])
-    # Same file names, but the half was re-extracted with another window.
-    (frames / "game_01_half_1" / "extraction.json").write_text('{"settings": {"before_sec": 15}}')
-    made = []
-    *_, reused, encoded = run(frames, cache, made)
+    # Same file name, different picture: e.g. re-extracted by timestamp from a variable-rate video.
+    path = next((frames / "game_01_half_1" / "frames" / "corner").glob("*t00-09.000.jpg"))
+    Image.new("RGB", (4, 4), (200, 0, 0)).save(path)
+    *_, reused, encoded = run(frames, cache, [])
     assert (reused, encoded) == (0, 1)
+
+
+def test_identical_frames_keep_their_cache_after_re_extraction(tmp_path):
+    frames, cache = tmp_path / "frames", tmp_path / "cache"
+    write_frames(frames, "01", 1, "corner", "00-10.000", [8, 9, 10])
+    run(frames, cache, [])
+    (frames / "game_01_half_1" / "extraction.json").write_text('{"frame_selection": "timestamp"}')
+    *_, reused, encoded = run(frames, cache, [])
+    assert (reused, encoded) == (1, 0)
 
 
 def test_halves_without_a_marker_are_not_encoded(tmp_path, capsys):

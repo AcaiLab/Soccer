@@ -8,7 +8,7 @@ import shutil
 
 from soccer.annotations import events_for_half, find_annotation_file, load_comments
 from soccer.dropbox import DropboxSharedLink
-from soccer.extract import DONE_MARKER, VIDEO_EXTS, ExtractionSettings, extract_events
+from soccer.extract import DONE_MARKER, FRAME_SELECTION, VIDEO_EXTS, ExtractionSettings, extract_events
 from soccer.manifest import Game
 from soccer.storage import download_prefix
 
@@ -84,6 +84,7 @@ def extract_game(game: Game, video_dir: pathlib.Path, annotation: pathlib.Path,
             "match_id": game.match_id, "half": half, "video": video.name,
             "annotation": annotation.name, "events": stats.events, "frames": stats.frames,
             "skipped_outside_video": stats.skipped, "max_time_error_sec": round(stats.max_time_error_sec, 4),
+            "frame_selection": FRAME_SELECTION,
             "settings": settings.__dict__,
         }
         (out / DONE_MARKER).write_text(json.dumps(summary[half], indent=2))
