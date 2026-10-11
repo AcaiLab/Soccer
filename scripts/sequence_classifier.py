@@ -61,7 +61,13 @@ class BiLSTM(nn.Module):
         self.head = nn.Sequential(nn.Dropout(0.3), nn.Linear(2 * d_h, n_cls))
 
     def forward(self, x, m):
-        h, _ = self.lstm(torch.relu(self.proj(x)))
+        # Pack so the backward direction starts at each event's last real frame, not in its
+        # padding (real frames come first; events at the start of a half have fewer).
+        lengths = m.sum(1).long().clamp(min=1).cpu()
+        packed = nn.utils.rnn.pack_padded_sequence(torch.relu(self.proj(x)), lengths, batch_first=True,
+                                                   enforce_sorted=False)
+        h, _ = self.lstm(packed)
+        h, _ = nn.utils.rnn.pad_packed_sequence(h, batch_first=True, total_length=x.shape[1])
         return self.head(masked_mean(h, m))
 
 
