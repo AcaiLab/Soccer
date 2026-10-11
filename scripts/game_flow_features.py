@@ -60,20 +60,26 @@ def get_category(label: str) -> str:
 
 
 def match_events(comments: list[dict]) -> list[dict]:
-    events = []
+    """The match's events in time order, (half, second); a repeated comment (same half,
+    second and label) is kept once, as the frame extraction does (B16)."""
+    events, seen = [], set()
     for c in comments:
-        half = c.get("half")
+        try:
+            half = int(c.get("half"))  # some exports store the half as text
+            seconds = parse_timestamp(c.get("time_stamp") or "")
+        except (TypeError, ValueError):
+            continue
         if half not in (1, 2):
             continue  # pre-match
-        try:
-            seconds = parse_timestamp(c.get("time_stamp") or "")
-        except ValueError:
-            continue
         label = sanitize_label(c.get("comments_type"))
-        events.append({"half": half, "minute": match_minute(seconds, half), "label": label,
+        if (half, seconds, label) in seen:
+            continue
+        seen.add((half, seconds, label))
+        events.append({"half": half, "seconds": seconds, "minute": match_minute(seconds, half), "label": label,
                        "category": get_category(label),
                        "text": c.get("comments_text_anonymized", c.get("comments_text", ""))})
-    events.sort(key=lambda e: e["minute"])
+    # Not by match minute: first-half stoppage time (45:00+) would interleave with the second half.
+    events.sort(key=lambda e: (e["half"], e["seconds"]))
     return events
 
 
@@ -82,10 +88,14 @@ def count(window: list[dict], labels: set[str]) -> int:
 
 
 def features_for_match(events: list[dict]) -> list[dict]:
+    """One row per event, described only by events strictly before it: an event at the
+    same second (a double substitution, a corner and its shot) is not history."""
     rows = []
-    for i, ev in enumerate(events):
-        prev = list(reversed(events[max(0, i - 3):i])) + [None] * 3
-        window = [e for e in events[:i] if e["minute"] >= ev["minute"] - WINDOW_MINUTES]
+    for ev in events:
+        earlier = [e for e in events if (e["half"], e["seconds"]) < (ev["half"], ev["seconds"])]
+        prev = list(reversed(earlier[-3:])) + [None] * 3
+        window = [e for e in earlier
+                  if e["half"] == ev["half"] and e["seconds"] >= ev["seconds"] - 60 * WINDOW_MINUTES]
         rows.append({
             "half": ev["half"], "minute": ev["minute"], "label": ev["label"], "category": ev["category"],
             **{f"prev_{j + 1}": (prev[j] or {}).get("label", "none") for j in range(3)},
