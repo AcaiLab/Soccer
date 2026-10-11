@@ -235,6 +235,7 @@ Seek accuracy is now checked on every new video: each half's marker records the 
 - **Fix.** Frames are now chosen by the video's timestamps (`ee6935f`). On the two real games tested, healthy halves come out byte-identical (game_01 h1, game_32 h2); game_32 h1 changes 1,918 of 1,919 frames; game_01 h2 (25.028 fps) changes 468 of 2,060 by about one frame. All 130 halves are re-extracted into a new frames folder and every analysis rerun; old frames and results are kept for comparison.
 - Every report states the frame-timing check (`scripts/report.py`, "Frame timing check").
 - **Rerun (2026-10-11).** All 130 halves re-extracted by timestamp: 88 came out byte-identical (their encodings were reused after verifying them), 42 changed, 41,509 of 266,837 frames in all (15.6%). In 11 halves essentially every frame moved; the 30-game set was affected as much as the new games (games 15, 17, 19, 23, 25–29 among them). After the rerun all 130 halves pass the timing check. Results before and after are kept side by side (`runs/epl2122`, `runs/epl2122_v2`, `runs/games30_v2`).
+- **Effect on the results: within seed noise.** Test accuracy changed by −0.020 to +0.011 (5-seed sd about 0.02); held-out event ARI rose slightly everywhere (raw DINOv2 +0.003 to +0.008, contrastive head +0.003 to +0.009); clustering and match-identity scores barely moved. The conclusions stand. The likely reason: drift moved frames within a window that is dominated by the same scene, and the drifting halves are a minority.
 
 ### Found in the review of 2026-10-11
 
