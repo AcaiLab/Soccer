@@ -247,3 +247,31 @@ def test_a_broken_oauth_file_is_explained(no_dropbox_env, monkeypatch, tmp_path)
     monkeypatch.setenv("DROPBOX_OAUTH_FILE", str(broken))
     with pytest.raises(RuntimeError, match="not valid JSON"):
         source_of()
+
+
+# --- transient failures are retried ----------------------------------------------------------
+
+def test_dropped_connections_and_server_errors_are_retried(monkeypatch):
+    waits = []
+    monkeypatch.setattr("soccer.dropbox.time.sleep", waits.append)
+    session = FakeSession(requests.ConnectionError("reset"), FakeResponse(503, {}),
+                          FakeResponse(429, {}, headers={"Retry-After": "42"}),
+                          FakeResponse(200, {"entries": [{"name": "x"}]}))
+    client = client_with(session, StaticToken("fixed"))
+    assert client.list_folder("") == [{"name": "x"}]
+    assert len(session.calls) == 4
+    assert waits == [5.0, 10.0, 42.0]  # backoff, then what Dropbox asked for
+
+
+def test_retries_give_up_and_report_the_error(monkeypatch):
+    session = FakeSession(*[FakeResponse(503, {}, text="busy") for _ in range(5)])
+    with pytest.raises(RuntimeError, match="HTTP 503"):
+        client_with(session, StaticToken("fixed")).list_folder("")
+    assert len(session.calls) == 5
+
+
+def test_errors_that_will_not_go_away_are_not_retried():
+    session = FakeSession(FakeResponse(409, text="path/not_found"))
+    with pytest.raises(RuntimeError, match="HTTP 409"):
+        client_with(session, StaticToken("fixed")).list_folder("/nope")
+    assert len(session.calls) == 1

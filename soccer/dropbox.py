@@ -31,6 +31,8 @@ TOKEN_URL = "https://api.dropboxapi.com/oauth2/token"
 DEFAULT_TOKEN_FILE = "tmp_dbx/token.txt"
 DEFAULT_OAUTH_FILE = "tmp_dbx/oauth.json"
 EXPIRY_MARGIN_SEC = 300  # fetch a new access token this long before the old one runs out
+TRANSIENT_STATUS = {429, 500, 502, 503, 504}  # worth asking again after a pause
+RETRY_ATTEMPTS = 5
 
 
 class TokenExpired(RuntimeError):
@@ -212,13 +214,35 @@ class DropboxSharedLink:
         request once more; a second refusal is reported by _check.
         """
         token = self._tokens.get()
-        r = self._session.post(url, headers={**(headers or {}), "Authorization": f"Bearer {token}"}, **kwargs)
+        r = self._send(url, token, headers, kwargs)
         if r.status_code == 401 and self._tokens.renewable and "missing_scope" not in r.text[:500]:
             r.close()
             token = self._tokens.renew(token)
-            r = self._session.post(url, headers={**(headers or {}), "Authorization": f"Bearer {token}"},
-                                   **kwargs)
+            r = self._send(url, token, headers, kwargs)
         return r
+
+    def _send(self, url: str, token: str, headers: dict | None, kwargs: dict,
+              attempts: int = RETRY_ATTEMPTS) -> requests.Response:
+        """One POST, repeated with backoff after a dropped connection, 429 or 5xx."""
+        for attempt in range(1, attempts + 1):
+            wait = min(300.0, 5.0 * 2 ** (attempt - 1))
+            try:
+                r = self._session.post(url, headers={**(headers or {}), "Authorization": f"Bearer {token}"},
+                                       **kwargs)
+            except (requests.ConnectionError, requests.Timeout) as e:
+                if attempt == attempts:
+                    raise
+                print(f"    Dropbox: {type(e).__name__}; retrying in {wait:.0f}s", flush=True)
+            else:
+                if r.status_code not in TRANSIENT_STATUS or attempt == attempts:
+                    return r
+                retry_after = getattr(r, "headers", {}).get("Retry-After")
+                if retry_after and retry_after.isdigit():
+                    wait = min(300.0, float(retry_after))
+                r.close()
+                print(f"    Dropbox: HTTP {r.status_code}; retrying in {wait:.0f}s", flush=True)
+            time.sleep(wait)
+        raise AssertionError("unreachable")
 
     def _check(self, r: requests.Response) -> None:
         if r.status_code == 200:

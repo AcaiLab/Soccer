@@ -4,8 +4,9 @@ import json
 
 
 class FakeResponse:
-    def __init__(self, status=200, body=None, text=None):
+    def __init__(self, status=200, body=None, text=None, headers=None):
         self.status_code = status
+        self.headers = headers or {}
         self._body = body
         self.text = text if text is not None else json.dumps(body if body is not None else {})
         self.closed = False
