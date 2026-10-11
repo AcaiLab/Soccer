@@ -214,7 +214,7 @@ Most of these were introduced or exposed by the refactor itself, and all are fix
 
 Seek accuracy is now checked on every new video: each half's marker records the largest gap between a frame's decoded timestamp and its index-based time (`max_time_error_sec`).
 
-### Found after the 65-game run (2026-10-09): frame timing in 8 halves (open)
+### Found after the 65-game run (2026-10-09): frame timing (fixed; rerun in progress)
 
 **B19.** The timing check above flags 8 of the 70 halves extracted with it (games 31–65). Their decoded timestamps differ from the index-based time by up to:
 
@@ -231,7 +231,9 @@ Seek accuracy is now checked on every new video: each half's marker records the 
 - **How much data.** After junk labels are dropped: 255 of 4,337 events (5.9%). Training 56 of 3,329 (1.7%), **validation 166 of 472 (35.2%)**, test 33 of 536 (6.2%). Validation picks the models, so this matters most there.
 - **Not checked.** The 60 halves of games 01–30 were extracted before the check existed. Game 01, the only video still on disk, is exact: 0.000 s at every 120 s sample and exactly 0.04 s between consecutive frames.
 - **A content check was inconclusive.** Comparing each half's first 10 s with the other halves' first 10 s (all start at kick-off) does not single out the flagged halves; a jump in mid-half would not show there anyway.
-- **Next.** `scripts/audit_video_timing.py --scan` decodes a half completely, locates every timestamp jump and saves the frames on both sides of it, which settles the question. It needs the videos again, so a Dropbox credential. If footage is missing, re-extract those halves by timestamp instead of by index and rerun. Every report now states this check (`scripts/report.py`, "Frame timing check").
+- **Audit (2026-10-11, `scripts/audit_video_timing.py`).** Full decodes of the six games with flagged halves show no jumps but a steady drift: the videos' nominal frame rate is wrong (variable-rate recordings). Counting frames falls behind the video's clock by the end of the half by 491 s (game_32 h1, claims 30 fps), 1,178 s and 1,287 s (game_35, claims 50 fps), 37 s and 48 s (game_46, 59.94 fps), 501 s (game_55 h2) and 475 s (game_63 h1). game_40 h1 has one real jump of 0.84 s, with a picture cut across it. Seeks land within about 2 s, so each event window started roughly right and then drifted, by up to 14 s at its end (what the markers recorded). Seek samples of games 01–30 flag 7 more halves (games 15, 19, 23, 27 and 28, offsets of 1.5–3 s); seek samples cannot measure drift, so they cannot clear a video.
+- **Fix.** Frames are now chosen by the video's timestamps (`ee6935f`). On the two real games tested, healthy halves come out byte-identical (game_01 h1, game_32 h2); game_32 h1 changes 1,918 of 1,919 frames; game_01 h2 (25.028 fps) changes 468 of 2,060 by about one frame. All 130 halves are re-extracted into a new frames folder and every analysis rerun; old frames and results are kept for comparison.
+- Every report states the frame-timing check (`scripts/report.py`, "Frame timing check").
 
 ---
 
