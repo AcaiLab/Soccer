@@ -234,6 +234,15 @@ Seek accuracy is now checked on every new video: each half's marker records the 
 - **Audit (2026-10-11, `scripts/audit_video_timing.py`).** Full decodes of the six games with flagged halves show no jumps but a steady drift: the videos' nominal frame rate is wrong (variable-rate recordings). Counting frames falls behind the video's clock by the end of the half by 491 s (game_32 h1, claims 30 fps), 1,178 s and 1,287 s (game_35, claims 50 fps), 37 s and 48 s (game_46, 59.94 fps), 501 s (game_55 h2) and 475 s (game_63 h1). game_40 h1 has one real jump of 0.84 s, with a picture cut across it. Seeks land within about 2 s, so each event window started roughly right and then drifted, by up to 14 s at its end (what the markers recorded). Seek samples of games 01–30 flag 7 more halves (games 15, 19, 23, 27 and 28, offsets of 1.5–3 s); seek samples cannot measure drift, so they cannot clear a video.
 - **Fix.** Frames are now chosen by the video's timestamps (`ee6935f`). On the two real games tested, healthy halves come out byte-identical (game_01 h1, game_32 h2); game_32 h1 changes 1,918 of 1,919 frames; game_01 h2 (25.028 fps) changes 468 of 2,060 by about one frame. All 130 halves are re-extracted into a new frames folder and every analysis rerun; old frames and results are kept for comparison.
 - Every report states the frame-timing check (`scripts/report.py`, "Frame timing check").
+- **Rerun (2026-10-11).** All 130 halves re-extracted by timestamp: 88 came out byte-identical (their encodings were reused after verifying them), 42 changed, 41,509 of 266,837 frames in all (15.6%). In 11 halves essentially every frame moved; the 30-game set was affected as much as the new games (games 15, 17, 19, 23, 25–29 among them). After the rerun all 130 halves pass the timing check. Results before and after are kept side by side (`runs/epl2122`, `runs/epl2122_v2`, `runs/games30_v2`).
+
+### Found in the review of 2026-10-11
+
+| # | Finding | Effect | Fix |
+|---|---|---|---|
+| B20 | Annotation features ordered events by match minute (second half offset by 45), so first-half stoppage time interleaved with the start of the second half; events at the same second counted as history, including 28 repeated comments | A first-half event in added time could list later second-half events as "previous" (a small leak of the future); a repeated comment could carry its own label as its previous event. 65 of 4,554 events had a same-second predecessor | `0af4c8b`: ordered by (half, second), history strictly earlier, 5-minute window within the half, repeated comments kept once. Multimodal results rerun |
+| B21 | The BiLSTM's backward pass read the zero padding after short events before their real frames | Hidden states of events near the start of a half depended on padding | `60a24f8`: packed sequences; a test checks that no sequence model depends on padding contents |
+| B22 | One dropped connection while listing a game's Dropbox folder stopped a worker | Lost runs, not wrong results | `bb62f5d`: retries with backoff on dropped connections, 429 and 5xx |
 
 ---
 
