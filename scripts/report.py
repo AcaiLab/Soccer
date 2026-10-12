@@ -24,6 +24,7 @@ import re
 
 import numpy as np
 import pandas as pd
+from robustness import read_test_summary
 
 from soccer.config import data_path, load_config
 from soccer.frames import describe_time_check, time_check
@@ -83,8 +84,8 @@ def read_ci(path: pathlib.Path):
 
 CV_SPLIT = r"cv\d+$"
 CV_MODELS = [("Pooled frozen features", "pooled", "pooled_s*/test_predictions.csv"),
-             ("Sequence model", "sequence", "sequence/test_predictions.csv"),
-             ("Visual + annotation", "multimodal", "multimodal_s*/test_predictions.csv")]
+             ("Sequence model", "sequence", "sequence/sequence_test_predictions.csv"),
+             ("Visual + annotation", "multimodal", "multimodal_s*/multimodal_test_predictions.csv")]
 
 
 def cv_section(results: pathlib.Path) -> list[str]:
@@ -217,6 +218,38 @@ def timing_section(frames_root: pathlib.Path, games: set[str]) -> list[str]:
             describe_time_check(check) + ".", ""]
 
 
+SINGLE_RUN = [("Pooled frozen features", "classification_report.txt"),
+              ("Sequence model", "sequence_classification_report.txt"),
+              ("Visual + annotation", "multimodal_classification_report.txt")]
+
+
+def single_run_section(results: pathlib.Path) -> list[str]:
+    """The stages as run_dino_pipeline.py runs them: one seed, results/classification and results/contrastive."""
+    out = []
+    path = results / "contrastive" / "contrastive_metrics.csv"
+    if path.is_file():
+        m = pd.read_csv(path)
+        rows = [[r.Group, r.Representation, f"{r.ARI:.3f}", f"{r.Game_ARI:.3f}", f"{r.Purity:.3f}"]
+                for r in m.itertuples()]
+        out += ["## Contrastive head, single run", "",
+                "Held-out games are matches the head never saw; one seed (scripts/robustness.py repeats it).", "",
+                table(["Games", "Representation", "Event ARI", "Match ARI", "Purity"], rows), ""]
+    rows = []
+    for name, file in SINGLE_RUN:
+        if (results / "classification" / file).is_file():
+            s = read_test_summary(results / "classification" / file)
+            ci = f"{s['ci_low']:.3f}-{s['ci_high']:.3f}" if "ci_low" in s else "n/a"
+            rows.append([name, s.get("chosen", "n/a"), f"{s['accuracy']:.3f}", f"{s['macro_f1']:.3f}", ci,
+                         f"{s['majority']:.3f}"])
+    if rows:
+        out += ["## Event classification on held-out test games, single run", "",
+                "Each model is chosen on validation games and scored once on test games; the interval resamples "
+                "whole test games. One seed: scripts/robustness.py gives mean ± sd over seeds.", "",
+                table(["Model", "Chosen on validation", "Accuracy", "Macro-F1", "95% interval (accuracy)",
+                       "Majority baseline"], rows), ""]
+    return out
+
+
 def main(argv=None):
     cfg = load_config()
     parser = argparse.ArgumentParser(description="Write report.md from a run's result files.")
@@ -227,7 +260,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     results = pathlib.Path(args.results)
-    sections = clustering_section(results) + cv_section(results) + robustness_section(results)
+    sections = (clustering_section(results) + single_run_section(results) + cv_section(results)
+                + robustness_section(results))
     if not sections:
         raise SystemExit(f"No result files found under {results}")
     sections += timing_section(pathlib.Path(args.frames), set(manifest_games(cfg)))

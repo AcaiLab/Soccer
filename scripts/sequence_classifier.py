@@ -204,7 +204,7 @@ def main(argv=None):
     in_test = split.test & keep
     pd.concat([prediction_rows(test_games, tf.halves[in_test], tf.event_tags[in_test], y_test, pred, seed=seed)
                for seed, pred in zip(args.seeds, preds, strict=True)]).to_csv(
-        out_dir / "test_predictions.csv", index=False)
+        out_dir / "sequence_test_predictions.csv", index=False)
     ci = bootstrap_ci(np.tile(y_test, len(preds)), np.concatenate(preds), np.tile(test_games, len(preds)),
                       seed=args.seeds[0])
 

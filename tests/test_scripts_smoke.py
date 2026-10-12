@@ -125,7 +125,7 @@ def test_multimodal_classification(data):
     # a timestamp: 6 test games x (15 - 3 "unknown") events.
     assert "(72 matched events)" in report
     assert len(pd.read_csv(out / "multimodal_results.csv")) == 9
-    assert_predictions_match_report(out / "test_predictions.csv", report)
+    assert_predictions_match_report(out / "multimodal_test_predictions.csv", report)
 
 
 def test_temporal_event_classifier_cross_league(data):
@@ -176,7 +176,7 @@ def test_sequence_classifier(data):
     assert "Chosen on validation" in report and "sd over 2 seeds" in report and "resampling test games" in report
     by_seed = pd.read_csv(out / "sequence_test_by_seed.csv")
     assert len(by_seed) == 2
-    preds = pd.read_csv(out / "test_predictions.csv", dtype=str)
+    preds = pd.read_csv(out / "sequence_test_predictions.csv", dtype=str)
     assert sorted(preds.seed.unique()) == ["1", "2"]
     for seed, group in preds.groupby("seed"):  # each seed's saved predictions give its reported accuracy
         acc = (group.label == group.pred).mean()

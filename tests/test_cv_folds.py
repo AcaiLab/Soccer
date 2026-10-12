@@ -58,8 +58,8 @@ def write_cv_results(root, overlap=False):
                 d = root / "robustness" / f"cv{k}" / (f"pooled_s{seed}" if kind == "pooled" else "sequence")
                 d.mkdir(parents=True, exist_ok=True)
                 pd.DataFrame({"seed": seed, "game": games, "half": "1", "event_tag": "00-10.000",
-                              "label": ["a", "b"], "pred": ["a", "a"]}).to_csv(d / "test_predictions.csv",
-                                                                                index=False)
+                              "label": ["a", "b"], "pred": ["a", "a"]}).to_csv(
+                    d / ("test_predictions.csv" if kind == "pooled" else "sequence_test_predictions.csv"), index=False)
     (root / "robustness").mkdir(exist_ok=True)
     pd.DataFrame(rows).to_csv(root / "robustness" / "all_runs.csv", index=False)
 

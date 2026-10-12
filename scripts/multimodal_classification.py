@@ -115,7 +115,7 @@ def main(argv=None):
         out_dir / "multimodal_results.csv", index=False)
     y_true, y_pred = chosen.pop("y_true"), chosen.pop("y_pred")
     test_idx = vis_idx[split.test]
-    save_test_predictions(out_dir / "test_predictions.csv", tf.games[test_idx], tf.halves[test_idx],
+    save_test_predictions(out_dir / "multimodal_test_predictions.csv", tf.games[test_idx], tf.halves[test_idx],
                           tf.event_tags[test_idx], y_true, y_pred, seed=seed)
     summary = format_test_summary(chosen, split, len(y_true), "matched events")
     report = classification_report(y_true, y_pred, zero_division=0)
