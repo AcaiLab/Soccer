@@ -7,7 +7,7 @@ from soccer.dropbox import DropboxSharedLink, TokenExpired
 def test_data_root_can_be_overridden(monkeypatch, tmp_path):
     monkeypatch.setenv("SOCCER_DATA_ROOT", str(tmp_path))
     cfg = load_config()
-    assert data_path(cfg, "frames") == tmp_path / "results_by_label_epl_2021_2022"
+    assert data_path(cfg, "frames") == tmp_path / "frames_v2"
 
 
 def test_dropped_labels_cover_junk_and_graphics():
@@ -67,5 +67,5 @@ def test_one_run_can_get_its_own_output_folders(monkeypatch, tmp_path):
     monkeypatch.setenv("SOCCER_MANIFEST", "configs/games_epl2122.csv")
     cfg = load_config()
     assert data_path(cfg, "features") == tmp_path / "runs" / "x" / "features"
-    assert data_path(cfg, "frames") == tmp_path / "data" / "results_by_label_epl_2021_2022"  # still shared
+    assert data_path(cfg, "frames") == tmp_path / "data" / "frames_v2"  # still shared
     assert str(cfg["manifest"]).endswith("games_epl2122.csv")

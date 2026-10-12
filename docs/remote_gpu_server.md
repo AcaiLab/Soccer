@@ -167,7 +167,7 @@ ssh soccer-gpu "tail -n 30 ~/pipeline.log; nvidia-smi --query-gpu=utilization.gp
 - Use only the GPU you were given (`CUDA_VISIBLE_DEVICES` in the env file), and
   check `nvidia-smi` before starting.
 - Data goes under `SOCCER_DATA_ROOT`. Videos are deleted after extraction;
-  remove `frames` with `rm -r $SOCCER_DATA_ROOT/results_by_label_epl_2021_2022`
+  remove `frames` with `rm -r $SOCCER_DATA_ROOT/frames_v2`
   once features are safely in S3.
 - Credentials on the server (`~/.config/soccer/env`, the Dropbox token or OAuth
   file, and `~/.aws/credentials` for option B) are mode 600. Server administrators

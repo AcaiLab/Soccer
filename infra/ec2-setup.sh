@@ -42,12 +42,12 @@ if torch.cuda.is_available():
 "
 
 # --- Annotations and features (small, fast) ---
-mkdir -p "$WORK/data/json/Soccer_Data_Json" "$WORK/features" "$WORK/results_by_label_epl_2021_2022"
+mkdir -p "$WORK/data/json/Soccer_Data_Json" "$WORK/features" "$WORK/frames_v2"
 aws s3 sync "$SOCCER_BUCKET/json/" "$WORK/data/json/Soccer_Data_Json/" --only-show-errors
 aws s3 sync "$SOCCER_BUCKET/features/" "$WORK/features/" --only-show-errors
 
 # --- Frames (large, in the background) ---
-nohup aws s3 sync "$SOCCER_BUCKET/frames/" "$WORK/results_by_label_epl_2021_2022/" \
+nohup aws s3 sync "$SOCCER_BUCKET/frames/" "$WORK/frames_v2/" \
   --only-show-errors > /var/log/s3-frames-sync.log 2>&1 &
 
 # --- Auto-shutdown after 30 idle GPU minutes ---

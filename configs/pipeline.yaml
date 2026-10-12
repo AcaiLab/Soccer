@@ -34,7 +34,7 @@ annotations_source:
 paths:
   videos: data/videos
   annotations: data/json/Soccer_Data_Json
-  frames: results_by_label_epl_2021_2022
+  frames: frames_v2   # chosen by timestamp (docs/leak_audit.md, B19); replaces results_by_label_epl_2021_2022
   features: features
   results: results
 

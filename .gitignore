@@ -3,6 +3,7 @@
 data/
 # extracted frames
 results_by_label_epl_2021_2022/
+frames_v2/
 # Dropbox listings and access token
 tmp_dbx/
 

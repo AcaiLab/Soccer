@@ -9,7 +9,7 @@ Output: <out>/frames/<label>/<label>_frame_<event MM-SS.sss>_t<frame MM-SS.sss>.
 Usage:
     python preprocess/extract_clips_frames_label.py \
         --video data/videos/<match>/<match>_1.mkv --json <match>.json \
-        --out results_by_label_epl_2021_2022/game_01_half_1
+        --out frames_v2/game_01_half_1
 
 Window, sampling rate and image format default to configs/pipeline.yaml.
 Requires the repo package to be importable (`pip install -e .`).

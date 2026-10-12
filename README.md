@@ -26,7 +26,7 @@ The data is **SoccerReplay-1988** (1,988 matches, shared under an NDA; its offic
 |---|---|---|
 | Annotation JSONs | Hugging Face `Homie0609/SoccerReplay-1988` (gated) or the lab's Google Drive copy | `data/json/Soccer_Data_Json/{train,valid,test}/<league>/<match>/` |
 | Match videos (`*_1.mkv`, `*_2.mkv`) | Password-protected Dropbox link, downloaded by `scripts/batch_pipeline.py` | `data/videos/<match>/` (deleted after extraction) |
-| Extracted frames | `batch_pipeline.py` | `results_by_label_epl_2021_2022/game_XX_half_N/frames/<label>/` |
+| Extracted frames | `batch_pipeline.py` | `frames_v2/game_XX_half_N/frames/<label>/` |
 | Features, results | Pipeline stages | `features/`, `results/` |
 
 `data/`, frames and features are gitignored. All paths are set in `configs/pipeline.yaml`; set `SOCCER_DATA_ROOT` to keep data elsewhere, e.g. on a mounted volume.

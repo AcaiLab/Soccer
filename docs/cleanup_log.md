@@ -138,3 +138,15 @@ Nothing removed or moved. Added: `soccer/transfer.py` and `scripts/transfer_drop
 ## Phase 4d: Dropbox credentials that do not expire (2026-10-08)
 
 Nothing removed or moved. Added `scripts/dropbox_auth.py` (a one-time PKCE authorisation that saves a refresh token to the gitignored `tmp_dbx/oauth.json`) and refresh-token support in `soccer/dropbox.py`: an access token is fetched when needed, renewed shortly before it expires, and renewed again if Dropbox refuses it. Fixed access tokens still work and, when given for one run, take priority. A missing permission (`missing_scope`) is now reported as such instead of as an expired token. `tests/test_dropbox_refresh.py` and `tests/test_dropbox_auth.py` cover this with a fake HTTP session, so no network is used.
+
+## Phase 4e: corrected frames become the default (2026-10-11)
+
+Approved by Hasset on 2026-10-11 ("i approve 1 and 2"). `configs/pipeline.yaml` now points `paths.frames` at `frames_v2`, the frames chosen by timestamp (docs/leak_audit.md, B19); docs, tests and setup scripts follow.
+
+| path | size | type | reason | confidence | recoverable? |
+|---|---|---|---|---|---|
+| server `~/soccer-data/results_by_label_epl_2021_2022/` | 23 GB, 266,967 files (130 halves) | extracted frames | chosen by frame index: 41,509 frames from the wrong moment in 42 halves; replaced by `frames_v2` | high | only by re-extracting from video with the code before `ee6935f` |
+| server `~/.config/soccer/dropbox_token` | 1.5 KB | expired 4-hour Dropbox access token | replaced by the refresh token in `dropbox_oauth.json`; the env line pointing to it is commented out, not removed | high | no, and not needed |
+| PC `tmp_dbx/token.txt` (gitignored) | 1.5 KB | expired 4-hour Dropbox access token | same | high | no, and not needed |
+
+Kept: the old features and results computed from the removed frames (`features/`, `results/`, `runs/epl2122/`), so before/after comparisons stay possible.
