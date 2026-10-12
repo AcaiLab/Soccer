@@ -28,6 +28,7 @@ import pandas as pd
 from soccer.config import data_path, load_config
 from soccer.frames import describe_time_check, time_check
 from soccer.manifest import manifest_games
+from soccer.metrics import bootstrap_ci
 
 SPLIT_NAMES = {"default": "match-level split", "venue": "leave-venue-out split",
                "epl2122": "65 games, official split"}
@@ -80,11 +81,66 @@ def read_ci(path: pathlib.Path):
     return (float(m.group(1)), float(m.group(2))) if m else None
 
 
+CV_SPLIT = r"cv\d+$"
+CV_MODELS = [("Pooled frozen features", "pooled", "pooled_s*/test_predictions.csv"),
+             ("Sequence model", "sequence", "sequence/test_predictions.csv"),
+             ("Visual + annotation", "multimodal", "multimodal_s*/test_predictions.csv")]
+
+
+def cv_section(results: pathlib.Path) -> list[str]:
+    """Folds cv1..cvK (scripts/make_cv_folds.py): every match is a test game in exactly one fold."""
+    path = results / "robustness" / "all_runs.csv"
+    if not path.is_file():
+        return []
+    df = pd.read_csv(path)
+    folds = sorted({s for s in df.split.unique() if re.match(CV_SPLIT, s)}, key=lambda s: int(s[2:]))
+    if not folds:
+        return []
+
+    def per_fold(metric):
+        return pd.Series([df[(df.split == f) & (df.metric == metric)].value.mean() for f in folds], index=folds)
+
+    out = ["## Cross-validation over all matches", "",
+           f"{len(folds)} folds by whole match; each match is a test game in exactly one fold, and models are "
+           "chosen on that fold's validation matches. Accuracy is mean ± sd over folds (each fold averaged over "
+           "its seeds); the pooled column scores every test prediction of every fold together, with a 95% "
+           "interval from resampling matches.", ""]
+    rows = []
+    for name, prefix, pattern in CV_MODELS:
+        acc, f1 = per_fold(f"{prefix}_accuracy"), per_fold(f"{prefix}_macro_f1")
+        if acc.isna().all():
+            continue
+        preds = pd.concat([pd.read_csv(p, dtype=str).assign(fold=f)
+                           for f in folds for p in sorted((results / "robustness" / f).glob(pattern))])
+        if (preds.groupby("game").fold.nunique() > 1).any():
+            raise ValueError(f"{name}: a match was tested in more than one fold")
+        ci = bootstrap_ci(preds.label, preds.pred, preds.game)["Accuracy_CI"]
+        rows.append([name, fmt(acc.mean(), acc.std()), fmt(f1.mean(), f1.std()),
+                     f"{(preds.label == preds.pred).mean():.3f} ({ci[0]:.3f}-{ci[1]:.3f})", preds.game.nunique()])
+    base = per_fold("pooled_majority")
+    out += [table(["Model", "Accuracy", "Macro-F1", "Pooled accuracy (95% interval)", "Matches scored"], rows), "",
+            f"Majority-class baseline: {fmt(base.mean(), base.std())}.", ""]
+    diff = per_fold("sequence_accuracy") - per_fold("pooled_accuracy")
+    if diff.notna().any():
+        out += [f"Sequence minus pooled accuracy, per fold: {fmt(diff.mean(), diff.std())} "
+                f"(sequence ahead in {int((diff > 0).sum())} of {int(diff.notna().sum())} folds).", ""]
+    before, after = per_fold("contrastive_heldout_before_ARI"), per_fold("contrastive_heldout_after_ARI")
+    if after.notna().any():
+        change = after - before
+        out += [f"Contrastive head, event ARI on each fold's held-out matches: {fmt(before.mean(), before.std())} "
+                f"before, {fmt(after.mean(), after.std())} after (up in {int((change > 0).sum())} of "
+                f"{int(change.notna().sum())} folds).", ""]
+    return out
+
+
 def robustness_section(results: pathlib.Path) -> list[str]:
     path = results / "robustness" / "all_runs.csv"
     if not path.is_file():
         return []
     df = pd.read_csv(path)
+    df = df[~df.split.str.match(CV_SPLIT)]  # folds have their own section
+    if df.empty:
+        return []
     out = ["## Contrastive head (triplet loss on frozen DINOv2)", "",
            "Held-out games are matches the head never saw. Values are mean ± sd over seeds; "
            "the change is computed within each seed.", ""]
@@ -171,7 +227,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     results = pathlib.Path(args.results)
-    sections = clustering_section(results) + robustness_section(results)
+    sections = clustering_section(results) + cv_section(results) + robustness_section(results)
     if not sections:
         raise SystemExit(f"No result files found under {results}")
     sections += timing_section(pathlib.Path(args.frames), set(manifest_games(cfg)))

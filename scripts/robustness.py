@@ -36,6 +36,11 @@ SPLITS = {"default": "configs/games.csv", "venue": "configs/games_venue_split.cs
           "epl2122": "configs/games_epl2122.csv"}
 
 
+def manifest_for(split: str) -> str:
+    """A named split, or configs/games_epl2122_<split>.csv (e.g. the folds cv1..cv5 of make_cv_folds.py)."""
+    return SPLITS.get(split, f"configs/games_epl2122_{split}.csv")
+
+
 def run(script, args, manifest):
     cmd = [sys.executable, str(REPO_ROOT / "scripts" / script), *map(str, args)]
     print("$ SOCCER_MANIFEST=" + manifest + " scripts/" + script + " " + " ".join(map(str, args)), flush=True)
@@ -77,7 +82,8 @@ def main(argv=None):
     cfg = load_config()
     parser = argparse.ArgumentParser(description="Seeds x splits robustness run.")
     parser.add_argument("--seeds", type=int, nargs="+", default=[42, 43, 44, 45, 46])
-    parser.add_argument("--splits", nargs="+", choices=list(SPLITS), default=["default", "venue"])
+    parser.add_argument("--splits", nargs="+", default=["default", "venue"],
+                        help=f"{', '.join(SPLITS)}, or cvN for configs/games_epl2122_cvN.csv")
     parser.add_argument("--device", default=None)
     args = parser.parse_args(argv)
 
@@ -86,9 +92,9 @@ def main(argv=None):
     root = data_path(cfg, "results") / "robustness"
     rows = []
     for split in args.splits:
-        manifest = SPLITS[split]
+        manifest = manifest_for(split)
         if not (REPO_ROOT / manifest).is_file():
-            raise SystemExit(f"{manifest} is missing; run scripts/make_venue_split.py first")
+            raise SystemExit(f"{manifest} is missing; run scripts/make_venue_split.py or make_cv_folds.py first")
         out = root / split
         for seed in args.seeds:
             head = features / f"contrastive_{split}_s{seed}"
