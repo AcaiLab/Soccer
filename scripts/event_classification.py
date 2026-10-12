@@ -31,7 +31,12 @@ import pandas as pd  # noqa: E402
 from sklearn.metrics import ConfusionMatrixDisplay, classification_report, confusion_matrix  # noqa: E402
 
 from soccer.config import data_path, dropped_labels, load_config, repo_path  # noqa: E402
-from soccer.evaluation import format_test_summary, select_on_validation, split_by_game  # noqa: E402
+from soccer.evaluation import (  # noqa: E402
+    format_test_summary,
+    save_test_predictions,
+    select_on_validation,
+    split_by_game,
+)
 from soccer.features import POOLING, load_temporal  # noqa: E402
 from soccer.manifest import (  # noqa: E402
     assert_disjoint,
@@ -92,6 +97,8 @@ def main(argv=None):
         out_dir / "classification_results.csv", index=False)
 
     y_true, y_pred = chosen.pop("y_true"), chosen.pop("y_pred")
+    save_test_predictions(out_dir / "test_predictions.csv", tf.games[split.test], tf.halves[split.test],
+                          tf.event_tags[split.test], y_true, y_pred, seed=seed)
     summary = format_test_summary(chosen, split, len(y_true), "events")
     present = sorted(set(y_true) | set(y_pred))
     report = classification_report(y_true, y_pred, labels=present, zero_division=0)

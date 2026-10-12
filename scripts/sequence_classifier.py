@@ -33,7 +33,7 @@ from sklearn.metrics import classification_report
 
 from soccer.config import data_path, dropped_labels, load_config, repo_path
 from soccer.encoding import pick_device
-from soccer.evaluation import split_by_game
+from soccer.evaluation import prediction_rows, split_by_game
 from soccer.features import load_temporal
 from soccer.manifest import load_manifest, manifest_games
 from soccer.metrics import bootstrap_ci, classification_scores
@@ -201,6 +201,10 @@ def main(argv=None):
         preds.append(pred)
         test_rows.append({"seed": seed, **classification_scores(y_test, pred, y_train)})
     test_df = pd.DataFrame(test_rows)
+    in_test = split.test & keep
+    pd.concat([prediction_rows(test_games, tf.halves[in_test], tf.event_tags[in_test], y_test, pred, seed=seed)
+               for seed, pred in zip(args.seeds, preds, strict=True)]).to_csv(
+        out_dir / "test_predictions.csv", index=False)
     ci = bootstrap_ci(np.tile(y_test, len(preds)), np.concatenate(preds), np.tile(test_games, len(preds)),
                       seed=args.seeds[0])
 

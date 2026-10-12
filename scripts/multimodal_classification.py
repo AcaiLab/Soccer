@@ -37,7 +37,12 @@ from sklearn.metrics import classification_report  # noqa: E402
 
 from soccer.annotations import match_minute, tag_to_seconds  # noqa: E402
 from soccer.config import data_path, dropped_labels, load_config, repo_path  # noqa: E402
-from soccer.evaluation import format_test_summary, select_on_validation, split_by_game  # noqa: E402
+from soccer.evaluation import (  # noqa: E402
+    format_test_summary,
+    save_test_predictions,
+    select_on_validation,
+    split_by_game,
+)
 from soccer.features import load_temporal, mean_pool  # noqa: E402
 from soccer.game_flow import CATEGORICAL, FEATURES, encoder  # noqa: E402
 from soccer.manifest import (
@@ -109,6 +114,9 @@ def main(argv=None):
     pd.DataFrame(rows).sort_values("Val_accuracy", ascending=False).to_csv(
         out_dir / "multimodal_results.csv", index=False)
     y_true, y_pred = chosen.pop("y_true"), chosen.pop("y_pred")
+    test_idx = vis_idx[split.test]
+    save_test_predictions(out_dir / "test_predictions.csv", tf.games[test_idx], tf.halves[test_idx],
+                          tf.event_tags[test_idx], y_true, y_pred, seed=seed)
     summary = format_test_summary(chosen, split, len(y_true), "matched events")
     report = classification_report(y_true, y_pred, zero_division=0)
     (out_dir / "multimodal_classification_report.txt").write_text(summary + "\n" + report)

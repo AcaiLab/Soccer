@@ -12,6 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
+import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.neural_network import MLPClassifier
 from sklearn.pipeline import Pipeline
@@ -101,6 +102,21 @@ def select_on_validation(feature_sets: dict[str, np.ndarray], labels: np.ndarray
         chosen.update({f"Test_{k}": v for k, v in
                        bootstrap_ci(labels[split.test], test_pred, games[split.test], seed=seed).items()})
     return rows, chosen
+
+
+def prediction_rows(games, halves, event_tags, y_true, y_pred, seed=None) -> pd.DataFrame:
+    """One row per test event (game, half, event tag, true label, prediction), so results can be
+    pooled across runs and folds and errors inspected event by event."""
+    df = pd.DataFrame({"game": np.asarray(games).astype(str), "half": np.asarray(halves).astype(str),
+                       "event_tag": np.asarray(event_tags).astype(str), "label": np.asarray(y_true),
+                       "pred": np.asarray(y_pred)})
+    if seed is not None:
+        df.insert(0, "seed", seed)
+    return df
+
+
+def save_test_predictions(path, games, halves, event_tags, y_true, y_pred, seed=None) -> None:
+    prediction_rows(games, halves, event_tags, y_true, y_pred, seed).to_csv(path, index=False)
 
 
 def format_test_summary(chosen: dict, split: Split, n_events: int, kind: str = "events") -> str:

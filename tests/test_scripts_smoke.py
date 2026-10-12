@@ -91,6 +91,14 @@ def test_within_game_reports_random_baseline(data):
     assert len(metrics) == 30 and (metrics["Purity_random"] > 0).all()
 
 
+def assert_predictions_match_report(path, report):
+    """The saved per-event predictions reproduce the report's test accuracy, on test games only."""
+    preds = pd.read_csv(path, dtype=str)
+    assert set(preds.game) <= set(GAMES[24:]), "only test games may appear"
+    accuracy = float(report.split("Test accuracy ")[1].split()[0])
+    assert abs((preds.label == preds.pred).mean() - accuracy) < 1e-4
+
+
 def test_event_classification_selects_on_validation(data):
     import event_classification
 
@@ -102,6 +110,7 @@ def test_event_classification_selects_on_validation(data):
     assert "95% interval, resampling test games" in report
     results = pd.read_csv(out / "classification_results.csv")
     assert "Val_accuracy" in results and not any("Test" in c for c in results.columns)
+    assert_predictions_match_report(out / "test_predictions.csv", report)
 
 
 def test_multimodal_classification(data):
@@ -116,6 +125,7 @@ def test_multimodal_classification(data):
     # a timestamp: 6 test games x (15 - 3 "unknown") events.
     assert "(72 matched events)" in report
     assert len(pd.read_csv(out / "multimodal_results.csv")) == 9
+    assert_predictions_match_report(out / "test_predictions.csv", report)
 
 
 def test_temporal_event_classifier_cross_league(data):
@@ -164,4 +174,10 @@ def test_sequence_classifier(data):
                               "--hidden-dim", "16", "--device", "cpu", "--seeds", "1", "2"])
     report = (out / "sequence_classification_report.txt").read_text()
     assert "Chosen on validation" in report and "sd over 2 seeds" in report and "resampling test games" in report
-    assert len(pd.read_csv(out / "sequence_test_by_seed.csv")) == 2
+    by_seed = pd.read_csv(out / "sequence_test_by_seed.csv")
+    assert len(by_seed) == 2
+    preds = pd.read_csv(out / "test_predictions.csv", dtype=str)
+    assert sorted(preds.seed.unique()) == ["1", "2"]
+    for seed, group in preds.groupby("seed"):  # each seed's saved predictions give its reported accuracy
+        acc = (group.label == group.pred).mean()
+        assert abs(acc - by_seed.set_index("seed").loc[int(seed), "Accuracy"]) < 1e-9
