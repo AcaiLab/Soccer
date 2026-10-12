@@ -202,7 +202,8 @@ def main(argv=None):
         test_rows.append({"seed": seed, **classification_scores(y_test, pred, y_train)})
     test_df = pd.DataFrame(test_rows)
     in_test = split.test & keep
-    pd.concat([prediction_rows(test_games, tf.halves[in_test], tf.event_tags[in_test], y_test, pred, seed=seed)
+    pd.concat([prediction_rows(test_games, tf.halves[in_test], tf.event_tags[in_test],
+                             [classes[i] for i in y_test], [classes[i] for i in pred], seed=seed)
                for seed, pred in zip(args.seeds, preds, strict=True)]).to_csv(
         out_dir / "sequence_test_predictions.csv", index=False)
     ci = bootstrap_ci(np.tile(y_test, len(preds)), np.concatenate(preds), np.tile(test_games, len(preds)),

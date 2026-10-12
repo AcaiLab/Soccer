@@ -178,6 +178,7 @@ def test_sequence_classifier(data):
     assert len(by_seed) == 2
     preds = pd.read_csv(out / "sequence_test_predictions.csv", dtype=str)
     assert sorted(preds.seed.unique()) == ["1", "2"]
+    assert not preds.label.str.isdigit().any() and not preds.pred.str.isdigit().any()  # names, not class codes
     for seed, group in preds.groupby("seed"):  # each seed's saved predictions give its reported accuracy
         acc = (group.label == group.pred).mean()
         assert abs(acc - by_seed.set_index("seed").loc[int(seed), "Accuracy"]) < 1e-9
