@@ -67,6 +67,20 @@ professor's NVIDIA GPU server. In summary:
 Experiments run on this setup, including the supervised and contrastive results, will be reported
 separately.
 
+\section*{Response to Last Week's Comments}
+Thank you for the comments. We have noted each one:
+\begin{enumerate}[noitemsep]
+  \item Macro-F1 stays our main metric, and we will report balanced accuracy alongside it.
+  \item We will keep the 6/2/2 game split and cross-validation, with tuning kept separate from each fold's
+        test games.
+  \item We will document the excluded labels and the remaining class counts.
+  \item A different competition can wait. Our priority for the next report is baseline results on real data.
+\end{enumerate}
+This week's work was the migration described above, so our written response to these points will come in
+the next report. About the repository link: the baseline repository is public, and we have corrected the
+link in the references (it was split across two lines in last week's PDF); please tell us if it still does not
+open.
+
 \section*{Challenges and Issues}
 \textbf{Short-lived access tokens.} Dropbox tokens expired every four hours, which interrupted long downloads.
 The one-time authorization fixed this.
