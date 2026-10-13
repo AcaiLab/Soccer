@@ -1,0 +1,273 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+\setlength{\parskip}{0.5em}
+\setlength{\parindent}{0pt}
+\renewcommand{\arraystretch}{1.15}
+
+\title{Progress Report -- Week [4]}
+\author{%
+  \begin{tabular}[t]{c@{\hspace{2em}}c@{\hspace{2em}}c}
+    Aniyah Mack & Adonay Zeru & Hasset Admasu\\
+    \texttt{amack18@emich.edu} & \texttt{azeru@emich.edu} & \texttt{hadmasu@emich.edu}
+  \end{tabular}\\[0.8em]
+  Nathnael Abraham\\
+  \texttt{abrah10@emich.edu}}
+\date{October 12, 2026}
+
+\begin{document}
+\maketitle
+
+\section*{Project Overview}
+Our project investigates how vision-language models can identify important events in soccer match
+videos and generate natural-language commentary describing those events. Our main goal is to
+determine how accurately soccer events can be identified from video, and how those events can be
+used to generate accurate commentary for different audiences, including casual viewers, expert fans,
+and people with low vision. The project builds on the SoccerReplay-1988 dataset~[5] and existing
+baseline methods for soccer event classification.
+
+\section*{Where Our Last Report Left Off}
+Last week we reported no results on real data. We had built a supervised evaluation (game-level split,
+cleaned labels, several seeds, macro-F1) and tested it on synthetic features, while the videos and
+features were still being re-obtained. We had set the contrastive and temporal work aside, on the
+advice to make a mean-pooled baseline solid first.
+
+\section*{Current Progress}
+\subsection*{Cleanup and moving our compute to the professor's server}
+Most of this period went into cleaning up the project and moving all heavy computation off our personal
+machines onto the professor's GPU server.
+\begin{itemize}[noitemsep]
+  \item \textbf{Cleanup.} We reorganized the \texttt{dino-contrastive} code into a conventional layout
+        (a shared package, one script per stage, one entry point), removed superseded scripts, took
+        credentials out of the code, pinned the dependencies, and added automated tests and a secret scan.
+        The cleaned code lives on its own branch, \texttt{cleanup/dino-contrastive}, kept locally and not yet
+        pushed. Every removal was listed and approved before it was made.
+  \item \textbf{Moving compute to the server.} Match videos are now downloaded straight from the shared
+        folder to the server, frames are extracted there and the videos deleted, and encoding, clustering and
+        training all run there. Nothing heavy runs on our own computers any more. The same command
+        reproduces a run from a fresh copy of the code, and we checked that it gives identical frames.
+  \item \textbf{Audit.} The cleanup exposed problems in the older pipeline (listed below), which we fixed
+        before producing the results that follow.
+\end{itemize}
+
+\subsection*{Results}
+Once the pipeline was running on the server we produced real results, from the same
+\texttt{dino-contrastive} pipeline rather than the separate baseline repository of last week. Every number
+below is produced by it.
+
+\textbf{Data.} 65 English Premier League 2021--22 matches, split by whole match as in SoccerReplay's
+official split (50 train, 7 validation, 8 test). Each event is described by up to 60 frames (30\,s before to
+30\,s after, one per second), encoded with frozen DINOv2-base. After removing junk and non-visual
+labels there are 4{,}337 events of 22 types (3{,}329 train, 472 validation, 536 test). We did not drop
+rare types: the smallest are \texttt{second\_yellow\_card} (a single event in the whole dataset, so it can
+never be scored), \texttt{throw\_in} (7) and \texttt{penalty} (12). Corners are the largest type, 16.4\% of
+events.
+
+\textbf{Protocol.} Models are fitted on training matches, chosen on validation matches, and scored once
+on test matches. Because 8 test matches are few, we also ran \emph{5-fold cross-validation by match}:
+every one of the 65 matches is a test match exactly once (13 per fold, 7 validation matches, 45 training
+matches), with 2 seeds per fold. Intervals come from resampling whole matches.
+
+\subsection*{Event classification}
+Table~\ref{tab:cv} is our main result. Table~\ref{tab:official} gives the official split for comparison.
+The sequence model is the temporal model chosen on validation among four candidates; it was the
+bidirectional LSTM in every fold and in the official split.
+
+\begin{table}[h]
+\centering\small
+\begin{tabular}{lcccc}
+\toprule
+Model & Accuracy & Macro-F1 & All 65 matches pooled (95\% interval) \\
+\midrule
+Always predict the most common label & $0.164 \pm 0.012$ & -- & -- \\
+Pooled frozen features & $0.371 \pm 0.019$ & $0.239 \pm 0.014$ & $0.371$ ($0.358$--$0.384$) \\
+Sequence model (BiLSTM) & $\mathbf{0.463 \pm 0.014}$ & $\mathbf{0.318 \pm 0.014}$ & $0.462$ ($0.447$--$0.479$) \\
+Visual + annotation features & $0.382 \pm 0.012$ & $0.269 \pm 0.017$ & $0.382$ ($0.368$--$0.398$) \\
+\bottomrule
+\end{tabular}
+\caption{5-fold cross-validation by match (mean $\pm$ sd over folds). The sequence model beats the pooled
+features by $0.092 \pm 0.011$ accuracy, and is ahead in all 5 folds.}
+\label{tab:cv}
+\end{table}
+
+\begin{table}[h]
+\centering\small
+\begin{tabular}{lccc}
+\toprule
+Model & Accuracy & Macro-F1 & 95\% interval (accuracy)\\
+\midrule
+Always predict the most common label & $0.166$ & -- & --\\
+Pooled frozen features & $0.390 \pm 0.020$ & $0.247 \pm 0.017$ & $0.353$--$0.428$\\
+Sequence model (BiLSTM) & $0.491 \pm 0.022$ & $0.324 \pm 0.032$ & $0.464$--$0.522$\\
+Visual + annotation features & $0.421 \pm 0.013$ & $0.296 \pm 0.041$ & $0.382$--$0.461$\\
+\bottomrule
+\end{tabular}
+\caption{Official split, 8 test matches (536 events); mean $\pm$ sd over 5 seeds. The sequence model is ahead of
+the pooled features in all 5 seeds.}
+\label{tab:official}
+\end{table}
+
+Accuracy flatters the common types, so macro-F1 is the fairer number: even the best model reaches only
+about 0.32. Table~\ref{tab:perclass} shows why. Seven of the 21 scorable types are essentially never recognized
+(F1 below 0.10), and they are the rare ones; start and end of a half, goals and substitutions are recognized
+well.
+
+\begin{table}[h]
+\centering\footnotesize
+\begin{tabular}{lrcccc}
+\toprule
+Event type & Events & Precision & Recall & F1 & \\
+\midrule
+corner & 712 & 0.52 & 0.66 & 0.58 & \\
+clearance & 631 & 0.39 & 0.51 & 0.44 & \\
+shot\_off\_target & 380 & 0.31 & 0.39 & 0.35 & \\
+foul\_with\_no\_card & 367 & 0.35 & 0.39 & 0.37 & \\
+substitution & 355 & 0.68 & 0.66 & 0.67 & \\
+goal & 266 & 0.65 & 0.66 & 0.65 & \\
+lead\_to\_corner & 264 & 0.42 & 0.32 & 0.36 & \\
+yellow\_card & 224 & 0.38 & 0.39 & 0.38 & \\
+saved\_by\_goal-keeper & 192 & 0.18 & 0.05 & 0.08 & low\\
+injury & 157 & 0.49 & 0.43 & 0.45 & \\
+ball\_possession & 151 & 0.39 & 0.17 & 0.24 & \\
+end\_of\_half\_game & 131 & 0.67 & 0.66 & 0.66 & \\
+start\_of\_half\_game & 130 & 0.78 & 0.87 & 0.82 & \\
+off\_side & 119 & 0.21 & 0.11 & 0.15 & \\
+var & 71 & 0.37 & 0.22 & 0.28 & \\
+free\_kick & 66 & 0.19 & 0.06 & 0.09 & low\\
+ball\_out\_of\_play & 53 & 0.00 & 0.00 & 0.00 & low\\
+foul\_lead\_to\_penalty & 30 & 0.17 & 0.05 & 0.08 & low\\
+red\_card & 18 & 0.00 & 0.00 & 0.00 & low\\
+penalty & 12 & 0.00 & 0.00 & 0.00 & low\\
+throw\_in & 7 & 0.00 & 0.00 & 0.00 & low\\
+\bottomrule
+\end{tabular}
+\caption{Per-class results of the sequence model, pooling the test predictions of all 65 matches from the
+cross-validation (both seeds; event counts are per seed). The 22nd type, \texttt{second\_yellow\_card}, has a
+single event and is left out.}
+\label{tab:perclass}
+\end{table}
+
+\subsection*{Do the embeddings follow the match or the event?}
+This was our main finding last time, and it holds at 65 matches. For K-means with one cluster per event
+type, raw mean-pooled DINOv2 embeddings agree with the match about as much as with the event (ARI
+0.069 against 0.036). On matches never seen in training the gap is much larger: match ARI 0.354 against
+event ARI 0.035. Normalizing each match separately removes the match signal (match ARI 0.003, event ARI
+0.046). Clustering inside each match gives purity 0.446 against 0.374 for shuffled clusters.
+
+\subsection*{Contrastive head}
+A triplet-loss projection head (256 dimensions), trained on training matches only, removes the match signal
+on held-out matches (match ARI $0.354 \to 0.029$) and raises event agreement (event ARI $0.035 \to 0.106$,
+purity $0.278 \to 0.370$; up in all 5 seeds). In cross-validation the event ARI goes from $0.031 \pm 0.002$ to
+$0.094 \pm 0.003$, up in all 5 folds. The improvement is real but small in absolute terms. On the training
+matches themselves the event ARI reaches 0.73, so the head mostly memorizes there.
+
+\subsection*{What went wrong, and what we fixed}
+Most of this period went into making these numbers trustworthy. We found and fixed, each with a test that
+fails on the old code:
+\begin{itemize}[noitemsep]
+  \item Our earlier contrastive result (96\% purity) was invalid: the head had been trained using test-game
+        labels. Training and evaluation now use disjoint matches, and the training code refuses overlap.
+  \item About 47\% of events had been cut from the wrong half's video, because match timestamps restart in
+        each half. Fixed.
+  \item Some videos report a wrong frame rate, so counting frames drifted away from the video's clock
+        (up to 21 minutes by the end of a half). Frames are now chosen by timestamp, and 15.6\% of all frames
+        (42 of 130 halves) changed. Rerunning moved every result by no more than seed noise.
+  \item Smaller issues: annotation features that could see later events, a BiLSTM reading padding, and
+        evaluation choices made on test data. All 22 findings are logged with their effect.
+\end{itemize}
+
+\section*{Response to Feedback}
+\begin{table}[h]
+\centering\small
+\begin{tabular}{>{\raggedright\arraybackslash}p{4.0cm}>{\raggedright\arraybackslash}p{2.3cm}>{\raggedright\arraybackslash}p{8.2cm}}
+\toprule
+Feedback & Status & What we did\\
+\midrule
+1. Make the mean-pooled pipeline and evaluation solid first & Done & Match-level splits, cross-validation, validation-only model choice, several seeds, intervals from resampling matches, and the mean-pooled baseline on real features (Tables~\ref{tab:cv}, \ref{tab:official}).\\
+2. Sweep embedding size (64--512) on held-out data & Not started & The head is still fixed at 256 dimensions.\\
+3. Address imbalance before hard-negative mining & Not started & Anchors still follow class frequency. We now know which types fail (Table~\ref{tab:perclass}), which makes this the next step.\\
+4. Hold out whole games, ideally a season or competition & Partly done & Whole matches are held out everywhere, and we also ran a leave-stadium-out split (no test stadium in training; results close to the match split). A second season needs new videos.\\
+5. Report supervised metrics, especially per class & Done & Macro-F1, per-class precision, recall and F1 (Table~\ref{tab:perclass}), and confusion matrices for every model.\\
+6. Do not move to LSTM/Transformer yet & \textbf{Not followed} & We did run BiLSTM, temporal-CNN and Transformer models on the same split. They beat the pooled baseline by about 9--10 points, but this goes against your advice, so we present them only as a comparison and ask below whether to keep them.\\
+\bottomrule
+\end{tabular}
+\caption{Feedback points and our response.}
+\end{table}
+
+\section*{Challenges and Issues}
+\textbf{Hidden data problems took most of the time.} The bugs above each looked like a plausible modelling
+result until we audited the data. We now check frame timing on every video and state it in every report.
+
+\textbf{Compute.} The shared GPU is usually full, so our runs use the CPU: encoding the 65 matches takes
+hours, and the cross-validation took about 3 hours.
+
+\textbf{Few test matches.} Eight test matches leave real uncertainty, which is why cross-validation is our main
+number. Seeds alone understate it.
+
+\textbf{Data access.} Dropbox access tokens expired every 4 hours; the downloads now renew themselves.
+
+\section*{Next Steps}
+\begin{enumerate}[noitemsep]
+  \item Sweep the embedding size (64, 128, 256, 512), compared on held-out macro-F1 in cross-validation.
+  \item Add class-balanced anchor sampling, then compare random and semi-hard negatives by per-class F1,
+        aiming at the seven rare types that are never recognized.
+  \item Decide how to treat very rare types (merge or keep), based on your answer below.
+  \item Hold out a second league-season or a different competition, which needs new videos and features.
+  \item Only then scale beyond 65 matches, and revisit temporal models against the final baseline.
+\end{enumerate}
+
+\section*{Questions or Feedback Needed}
+\begin{itemize}[noitemsep]
+  \item We ran sequence models despite the advice to wait. Should we keep them as a comparison against the
+        pooled baseline, or drop them until the contrastive steps are finished?
+  \item Is 5-fold cross-validation by match over 65 matches an acceptable main result, with the official
+        split as secondary?
+  \item Seven rare event types are almost never recognized. Should they be merged into broader categories
+        (for example red card into card), or kept as they are?
+  \item For the held-out competition, is another EPL season enough, or should it be a different competition?
+\end{itemize}
+
+\section*{Team Contributions}
+\begin{itemize}[noitemsep]
+  \item \textbf{Aniyah Mack:} [to be filled in by Aniyah]
+  \item \textbf{Adonay Zeru:} [to be filled in by Adonay]
+  \item \textbf{Hasset Admasu:} Built and audited the \texttt{dino-contrastive} pipeline: leakage and data
+        fixes (wrong half, frame timing, annotation features), match-level splits and 5-fold
+        cross-validation, the sequence and contrastive experiments, a GPU-server workflow with tests and
+        continuous integration, and the analysis and results in this report.
+  \item \textbf{Nathnael Abraham:} [to be filled in by Nathnael]
+\end{itemize}
+
+\section*{References}
+\begin{enumerate}[label={[\arabic*]}, noitemsep]
+  \item Claude Code. Helped with identifying the data leakage, pipeline implementation, analysis and documentation.
+  \item James MacQueen. Some methods for classification and analysis of multivariate observations. In
+        \emph{Proceedings of the Fifth Berkeley Symposium on Mathematical Statistics and Probability, Volume 1:
+        Statistics}, pages 281--297. University of California Press, 1967.
+  \item Maxime Oquab, Timoth\'ee Darcet, Th\'eo Moutakanni, Huy V. Vo, Marc Szafraniec, Vasil Khalidov, Pierre
+        Fernandez, Daniel Haziza, Francisco Massa, Alaaeldin El-Nouby, Mahmoud Assran, Nicolas Ballas, Wojciech
+        Galuba, Russell Howes, Po-Yao Huang, Shang-Wen Li, Ishan Misra, Michael Rabbat, Vasu Sharma, Gabriel
+        Synnaeve, Hu Xu, Herv\'e J\'egou, Julien Mairal, Patrick Labatut, Armand Joulin, and Piotr Bojanowski.
+        DINOv2: Learning robust visual features without supervision. \emph{Transactions on Machine Learning
+        Research}, 2024.
+  \item Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry,
+        Amanda Askell, Pamela Mishkin, Jack Clark, Gretchen Krueger, and Ilya Sutskever. Learning transferable
+        visual models from natural language supervision. In \emph{Proceedings of the 38th International
+        Conference on Machine Learning (ICML)}, volume 139, pages 8748--8763. PMLR, 2021.
+  \item Jiayuan Rao, Haoning Wu, Hao Jiang, Ya Zhang, Yanfeng Wang, and Weidi Xie. Towards universal soccer
+        video understanding. In \emph{Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern
+        Recognition (CVPR)}, pages 8384--8394, 2025.
+  \item Florian Schroff, Dmitry Kalenichenko, and James Philbin. FaceNet: A unified embedding for face
+        recognition and clustering. In \emph{Proceedings of the IEEE Conference on Computer Vision and Pattern
+        Recognition (CVPR)}, pages 815--823, 2015.
+  \item Aniyah Mack, Adonay Zeru, Hasset Admasu, and Nathnael Abraham. Soccer Event Baseline: supervised
+        mean-pooled baseline for soccer event recognition. GitHub repository,
+        \url{https://github.com/Hasset-hub/soccer-event-baseline}, 2026.
+  \item Laurens van der Maaten and Geoffrey Hinton. Visualizing data using t-SNE. \emph{Journal of Machine
+        Learning Research}, 9(86):2579--2605, 2008.
+\end{enumerate}
+
+\end{document}
