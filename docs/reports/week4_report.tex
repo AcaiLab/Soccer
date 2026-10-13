@@ -36,10 +36,27 @@ features were still being re-obtained. We had set the contrastive and temporal w
 advice to make a mean-pooled baseline solid first.
 
 \section*{Current Progress}
-This week we have real results. They come from the \texttt{dino-contrastive} pipeline (a cleaned
-branch, \texttt{cleanup/dino-contrastive}, kept locally and not yet pushed), not from the separate
-baseline repository of last week. The pipeline now runs on a GPU server from a fresh copy of the code
-to a finished report, and every number below is produced by it.
+\subsection*{Cleanup and moving our compute to the professor's server}
+Most of this period went into cleaning up the project and moving all heavy computation off our personal
+machines onto the professor's GPU server.
+\begin{itemize}[noitemsep]
+  \item \textbf{Cleanup.} We reorganized the \texttt{dino-contrastive} code into a conventional layout
+        (a shared package, one script per stage, one entry point), removed superseded scripts, took
+        credentials out of the code, pinned the dependencies, and added automated tests and a secret scan.
+        The cleaned code lives on its own branch, \texttt{cleanup/dino-contrastive}, kept locally and not yet
+        pushed. Every removal was listed and approved before it was made.
+  \item \textbf{Moving compute to the server.} Match videos are now downloaded straight from the shared
+        folder to the server, frames are extracted there and the videos deleted, and encoding, clustering and
+        training all run there. Nothing heavy runs on our own computers any more. The same command
+        reproduces a run from a fresh copy of the code, and we checked that it gives identical frames.
+  \item \textbf{Audit.} The cleanup exposed problems in the older pipeline (listed below), which we fixed
+        before producing the results that follow.
+\end{itemize}
+
+\subsection*{Results}
+Once the pipeline was running on the server we produced real results, from the same
+\texttt{dino-contrastive} pipeline rather than the separate baseline repository of last week. Every number
+below is produced by it.
 
 \textbf{Data.} 65 English Premier League 2021--22 matches, split by whole match as in SoccerReplay's
 official split (50 train, 7 validation, 8 test). Each event is described by up to 60 frames (30\,s before to
