@@ -90,3 +90,23 @@ def test_balanced_accuracy_is_mean_recall_over_the_classes_present():
     scores = classification_scores(y_true, y_pred, y_train=["a"] * 10)
     assert scores["Accuracy"] == pytest.approx(0.9)
     assert scores["Balanced_accuracy"] == pytest.approx((1.0 + 0.5) / 2)  # accuracy flatters the common class
+
+
+def test_label_summary_documents_exclusions_and_counts():
+    from label_summary import label_table, to_markdown
+
+    from soccer.manifest import Game
+
+    manifest = [Game("01", "m1", "l", "train", "train"), Game("02", "m2", "l", "valid", "val"),
+                Game("03", "m3", "l", "test", "test")]
+    labels = ["corner"] * 5 + ["goal"] * 2 + ["unknown", "show_added_time", "goal"]
+    games = ["01", "01", "02", "03", "03", "01", "02", "03", "01", "02"]
+    table = label_table(labels, games, manifest, {"junk": ["unknown"], "non_visual": ["show_added_time"]})
+    rows = table.set_index("label")
+    assert rows.loc["corner", ["train", "val", "test", "total"]].tolist() == [2, 1, 2, 5]
+    assert rows.loc["goal", ["train", "val", "test", "total"]].tolist() == [1, 2, 0, 3]  # 3 events, none in test
+    assert rows.loc["goal", "note"] == "fewer than 5 events" and rows.loc["corner", "note"] == ""
+    assert (rows.loc["unknown", "status"], rows.loc["unknown", "reason"]) == ("excluded", "junk")
+    assert rows.loc["show_added_time", "reason"] == "non-visual"
+    text = to_markdown(table)
+    assert "2 labels kept (8 events" in text and "2 excluded (2 events)" in text

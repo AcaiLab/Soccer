@@ -263,6 +263,14 @@ def single_run_section(results: pathlib.Path) -> list[str]:
     return out
 
 
+def labels_section(results: pathlib.Path) -> list[str]:
+    """Kept and excluded labels with their counts, from scripts/label_summary.py."""
+    path = results / "labels" / "label_counts.md"
+    if not path.is_file():
+        return []
+    return ["## Labels: what is kept and what is excluded", "", path.read_text(encoding="utf-8").strip(), ""]
+
+
 def main(argv=None):
     cfg = load_config()
     parser = argparse.ArgumentParser(description="Write report.md from a run's result files.")
@@ -273,7 +281,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     results = pathlib.Path(args.results)
-    sections = (clustering_section(results) + single_run_section(results) + cv_section(results)
+    sections = (clustering_section(results) + labels_section(results) + single_run_section(results)
+                + cv_section(results)
                 + robustness_section(results))
     if not sections:
         raise SystemExit(f"No result files found under {results}")
