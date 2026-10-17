@@ -129,4 +129,5 @@ def format_test_summary(chosen: dict, split: Split, n_events: int, kind: str = "
     return (f"Chosen on validation: {chosen['Features']} + {chosen['Classifier']}\n"
             f"Test games: {' '.join(split.test_games)}  ({n_events} {kind})\n"
             f"Test accuracy {chosen['Test_Accuracy']:.4f}  macro-F1 {chosen['Test_Macro_F1']:.4f}  "
+            f"balanced accuracy {chosen['Test_Balanced_accuracy']:.4f}  "
             f"majority-class baseline {chosen['Test_Majority_baseline']:.4f}\n" + ci)

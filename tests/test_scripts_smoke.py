@@ -107,6 +107,7 @@ def test_event_classification_selects_on_validation(data):
                                "--contrastive-features", str(data / "none"), "--out-dir", str(out)])
     report = (out / "classification_report.txt").read_text()
     assert "Chosen on validation" in report and "majority-class baseline" in report
+    assert "balanced accuracy" in report
     assert "95% interval, resampling test games" in report
     results = pd.read_csv(out / "classification_results.csv")
     assert "Val_accuracy" in results and not any("Test" in c for c in results.columns)
@@ -120,7 +121,7 @@ def test_multimodal_classification(data):
     multimodal_classification.main(["--dino-features", str(data / "temporal"),
                                     "--game-flow-features", str(data / "game_flow.csv"), "--out-dir", str(out)])
     report = (out / "multimodal_classification_report.txt").read_text()
-    assert "Chosen on validation" in report
+    assert "Chosen on validation" in report and "balanced accuracy" in report
     # Every synthetic event has an annotation partner, including the pairs that share
     # a timestamp: 6 test games x (15 - 3 "unknown") events.
     assert "(72 matched events)" in report
@@ -174,6 +175,7 @@ def test_sequence_classifier(data):
                               "--hidden-dim", "16", "--device", "cpu", "--seeds", "1", "2"])
     report = (out / "sequence_classification_report.txt").read_text()
     assert "Chosen on validation" in report and "sd over 2 seeds" in report and "resampling test games" in report
+    assert "balanced accuracy" in report
     by_seed = pd.read_csv(out / "sequence_test_by_seed.csv")
     assert len(by_seed) == 2
     preds = pd.read_csv(out / "sequence_test_predictions.csv", dtype=str)

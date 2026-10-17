@@ -69,8 +69,9 @@ def test_report_summarises_the_folds(tmp_path):
     report_main(["--results", str(tmp_path), "--frames", str(tmp_path / "none")])
     text = (tmp_path / "report.md").read_text(encoding="utf-8")
     assert "## Cross-validation over all matches" in text
-    assert "| Pooled frozen features | 0.450 ± 0.071 | 0.200 ± 0.000 | 0.500 (" in text
+    assert "| Pooled frozen features | 0.450 ± 0.071 | 0.200 ± 0.000 | n/a | 0.500 (" in text
     assert text.count("| 4 |") == 2  # both models scored all four matches
+    assert ") | 0.500 | 4 |" in text  # pooled balanced accuracy: recall of a = 1.0, of b = 0.0
     assert "sequence ahead in 2 of 2 folds" in text and "up in 2 of 2 folds" in text
     assert "match-level split" not in text  # folds are not repeated as ordinary splits
 
@@ -79,3 +80,13 @@ def test_report_refuses_a_match_tested_in_two_folds(tmp_path):
     write_cv_results(tmp_path, overlap=True)
     with pytest.raises(ValueError, match="more than one fold"):
         report_main(["--results", str(tmp_path), "--frames", str(tmp_path / "none")])
+
+
+def test_balanced_accuracy_is_mean_recall_over_the_classes_present():
+    from soccer.metrics import classification_scores
+
+    y_true = ["a"] * 8 + ["b"] * 2
+    y_pred = ["a"] * 8 + ["a", "b"]  # everything right except one of the two b events
+    scores = classification_scores(y_true, y_pred, y_train=["a"] * 10)
+    assert scores["Accuracy"] == pytest.approx(0.9)
+    assert scores["Balanced_accuracy"] == pytest.approx((1.0 + 0.5) / 2)  # accuracy flatters the common class

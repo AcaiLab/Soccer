@@ -66,6 +66,9 @@ def read_test_summary(path: pathlib.Path) -> dict:
     m = re.search(r"Test accuracy ([\d.]+).*?macro-F1 ([\d.]+)", text)
     if m:
         out["accuracy"], out["macro_f1"] = float(m.group(1)), float(m.group(2))
+    m = re.search(r"balanced accuracy ([\d.]+)", text)
+    if m:
+        out["balanced_accuracy"] = float(m.group(1))
     m = re.search(r"majority-class baseline ([\d.]+)", text)
     if m:
         out["majority"] = float(m.group(1))
@@ -116,17 +119,19 @@ def main(argv=None):
                  manifest, out / f"pooled_s{seed}" / "classification_report.txt")
             s = read_test_summary(out / f"pooled_s{seed}" / "classification_report.txt")
             rows += [{"split": split, "seed": seed, "metric": f"pooled_{k}", "value": s[k]}
-                     for k in ("accuracy", "macro_f1", "majority") if k in s]
+                     for k in ("accuracy", "macro_f1", "balanced_accuracy", "majority") if k in s]
             step("multimodal_classification.py", ["--seed", seed, "--out-dir", out / f"multimodal_s{seed}"],
                  manifest, out / f"multimodal_s{seed}" / "multimodal_classification_report.txt")
             s = read_test_summary(out / f"multimodal_s{seed}" / "multimodal_classification_report.txt")
             rows += [{"split": split, "seed": seed, "metric": f"multimodal_{k}", "value": s[k]}
-                     for k in ("accuracy", "macro_f1") if k in s]
+                     for k in ("accuracy", "macro_f1", "balanced_accuracy") if k in s]
         step("sequence_classifier.py", ["--seeds", *args.seeds, "--out-dir", out / "sequence", *device], manifest,
              out / "sequence" / "sequence_test_by_seed.csv")
         for _, r in pd.read_csv(out / "sequence" / "sequence_test_by_seed.csv").iterrows():
             rows.append({"split": split, "seed": int(r["seed"]), "metric": "sequence_accuracy", "value": r["Accuracy"]})
             rows.append({"split": split, "seed": int(r["seed"]), "metric": "sequence_macro_f1", "value": r["Macro_F1"]})
+            rows.append({"split": split, "seed": int(r["seed"]), "metric": "sequence_balanced_accuracy",
+                         "value": r["Balanced_accuracy"]})
 
     df = pd.DataFrame(rows)
     root.mkdir(parents=True, exist_ok=True)

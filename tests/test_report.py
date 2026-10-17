@@ -70,7 +70,7 @@ def test_report_shows_a_single_run_as_run_dino_pipeline_leaves_it(tmp_path):
     cls.mkdir()
     (cls / "classification_report.txt").write_text(
         "Chosen on validation: DINOv2 max_pool + LogReg\nTest games: 31 32  (124 events)\n"
-        "Test accuracy 0.2742  macro-F1 0.1438  majority-class baseline 0.2016\n"
+        "Test accuracy 0.2742  macro-F1 0.1438  balanced accuracy 0.1900  majority-class baseline 0.2016\n"
         "95% interval, resampling test games: accuracy 0.254-0.292, macro-F1 0.100-0.200\n")
     (cls / "sequence_classification_report.txt").write_text(
         "Chosen on validation: TemporalCNN (mean val accuracy 0.2727 over 1 seed(s))\n"
@@ -82,7 +82,7 @@ def test_report_shows_a_single_run_as_run_dino_pipeline_leaves_it(tmp_path):
                    "Purity": 0.27}]).to_csv(tmp_path / "contrastive" / "contrastive_metrics.csv", index=False)
     main(["--results", str(tmp_path), "--frames", str(tmp_path / "none")])
     text = (tmp_path / "report.md").read_text(encoding="utf-8")
-    assert "| Pooled frozen features | DINOv2 max_pool + LogReg | 0.274 | 0.144 | 0.254-0.292 | 0.202 |" in text
-    assert "| Sequence model | TemporalCNN (mean val accuracy 0.2727 over 1 seed(s)) | 0.493 | 0.310 | 0.465-0.522" in text
+    assert "| Pooled frozen features | DINOv2 max_pool + LogReg | 0.274 | 0.144 | 0.190 | 0.254-0.292 | 0.202 |" in text
+    assert "| Sequence model | TemporalCNN (mean val accuracy 0.2727 over 1 seed(s)) | 0.493 | 0.310 | n/a | 0.465-0.522" in text
     assert "| held-out games | DINOv2 (before) | 0.030 | 0.400 | 0.270 |" in text
     assert "Visual + annotation" not in text  # no report, no row

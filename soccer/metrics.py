@@ -9,7 +9,13 @@ from __future__ import annotations
 from collections import Counter
 
 import numpy as np
-from sklearn.metrics import accuracy_score, adjusted_rand_score, f1_score, normalized_mutual_info_score
+from sklearn.metrics import (
+    accuracy_score,
+    adjusted_rand_score,
+    balanced_accuracy_score,
+    f1_score,
+    normalized_mutual_info_score,
+)
 
 
 def cluster_purity(labels: np.ndarray, cluster_ids: np.ndarray) -> float:
@@ -42,11 +48,13 @@ def clustering_scores(labels: np.ndarray, cluster_ids: np.ndarray, seed: int = 4
 
 
 def classification_scores(y_true: np.ndarray, y_pred: np.ndarray, y_train: np.ndarray) -> dict:
-    """Accuracy and macro-F1, plus the always-predict-the-commonest-training-class baseline."""
+    """Accuracy, macro-F1 and balanced accuracy (mean recall over the classes present in y_true),
+    plus the always-predict-the-commonest-training-class baseline."""
     majority = Counter(np.asarray(y_train).tolist()).most_common(1)[0][0]
     return {
         "Accuracy": accuracy_score(y_true, y_pred),
         "Macro_F1": f1_score(y_true, y_pred, average="macro", zero_division=0),
+        "Balanced_accuracy": balanced_accuracy_score(y_true, y_pred),
         "Majority_baseline": float(np.mean(np.asarray(y_true) == majority)),
     }
 

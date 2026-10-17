@@ -25,6 +25,7 @@ import re
 import numpy as np
 import pandas as pd
 from robustness import read_test_summary
+from sklearn.metrics import balanced_accuracy_score
 
 from soccer.config import data_path, load_config
 from soccer.frames import describe_time_check, time_check
@@ -39,6 +40,12 @@ def fmt(mean, sd=None, digits=3):
     if sd is None or not np.isfinite(sd):
         return f"{mean:.{digits}f}"
     return f"{mean:.{digits}f} ± {sd:.{digits}f}"
+
+
+def mean_sd_or_na(series, digits=3):
+    """mean ± sd of a metric, or n/a when the runs predate the metric."""
+    series = series.dropna()
+    return "n/a" if series.empty else fmt(series.mean(), series.std() if len(series) > 1 else None, digits)
 
 
 def table(header, rows):
@@ -117,9 +124,12 @@ def cv_section(results: pathlib.Path) -> list[str]:
             raise ValueError(f"{name}: a match was tested in more than one fold")
         ci = bootstrap_ci(preds.label, preds.pred, preds.game)["Accuracy_CI"]
         rows.append([name, fmt(acc.mean(), acc.std()), fmt(f1.mean(), f1.std()),
-                     f"{(preds.label == preds.pred).mean():.3f} ({ci[0]:.3f}-{ci[1]:.3f})", preds.game.nunique()])
+                     mean_sd_or_na(per_fold(f"{prefix}_balanced_accuracy")),
+                     f"{(preds.label == preds.pred).mean():.3f} ({ci[0]:.3f}-{ci[1]:.3f})",
+                     f"{balanced_accuracy_score(preds.label, preds.pred):.3f}", preds.game.nunique()])
     base = per_fold("pooled_majority")
-    out += [table(["Model", "Accuracy", "Macro-F1", "Pooled accuracy (95% interval)", "Matches scored"], rows), "",
+    out += [table(["Model", "Accuracy", "Macro-F1", "Balanced accuracy", "Pooled accuracy (95% interval)",
+                  "Pooled balanced accuracy", "Matches scored"], rows), "",
             f"Majority-class baseline: {fmt(base.mean(), base.std())}.", ""]
     diff = per_fold("sequence_accuracy") - per_fold("pooled_accuracy")
     if diff.notna().any():
@@ -190,9 +200,11 @@ def robustness_section(results: pathlib.Path) -> list[str]:
             cis = [c for c in (read_ci(p) for p in (results / "robustness" / split).glob(report)) if c]
             ci = (f"{np.mean([c[0] for c in cis]):.3f}-{np.mean([c[1] for c in cis]):.3f}" if cis else "n/a")
             rows.append([SPLIT_NAMES.get(split, split), model, fmt(mean[key], sd[key]),
-                         fmt(mean[f"{prefix}_macro_f1"], sd[f"{prefix}_macro_f1"]), ci,
+                         fmt(mean[f"{prefix}_macro_f1"], sd[f"{prefix}_macro_f1"]),
+                         fmt(mean[f"{prefix}_balanced_accuracy"], sd[f"{prefix}_balanced_accuracy"])
+                         if f"{prefix}_balanced_accuracy" in mean else "n/a", ci,
                          f"{base:.3f}", int(n[key])])
-    out += [table(["Split", "Model", "Accuracy", "Macro-F1", "95% interval (accuracy)",
+    out += [table(["Split", "Model", "Accuracy", "Macro-F1", "Balanced accuracy", "95% interval (accuracy)",
                    "Majority baseline", "Seeds"], rows), ""]
     comparisons = []
     for split in df.split.unique():
@@ -239,14 +251,15 @@ def single_run_section(results: pathlib.Path) -> list[str]:
         if (results / "classification" / file).is_file():
             s = read_test_summary(results / "classification" / file)
             ci = f"{s['ci_low']:.3f}-{s['ci_high']:.3f}" if "ci_low" in s else "n/a"
-            rows.append([name, s.get("chosen", "n/a"), f"{s['accuracy']:.3f}", f"{s['macro_f1']:.3f}", ci,
+            rows.append([name, s.get("chosen", "n/a"), f"{s['accuracy']:.3f}", f"{s['macro_f1']:.3f}",
+                         f"{s['balanced_accuracy']:.3f}" if "balanced_accuracy" in s else "n/a", ci,
                          f"{s['majority']:.3f}"])
     if rows:
         out += ["## Event classification on held-out test games, single run", "",
                 "Each model is chosen on validation games and scored once on test games; the interval resamples "
                 "whole test games. One seed: scripts/robustness.py gives mean ± sd over seeds.", "",
-                table(["Model", "Chosen on validation", "Accuracy", "Macro-F1", "95% interval (accuracy)",
-                       "Majority baseline"], rows), ""]
+                table(["Model", "Chosen on validation", "Accuracy", "Macro-F1", "Balanced accuracy",
+                       "95% interval (accuracy)", "Majority baseline"], rows), ""]
     return out
 
 

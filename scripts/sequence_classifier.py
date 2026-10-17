@@ -211,12 +211,13 @@ def main(argv=None):
 
     df.to_csv(out_dir / "sequence_results.csv", index=False)
     test_df.to_csv(out_dir / "sequence_test_by_seed.csv", index=False)
-    acc, f1 = test_df["Accuracy"], test_df["Macro_F1"]
+    acc, f1, bal = test_df["Accuracy"], test_df["Macro_F1"], test_df["Balanced_accuracy"]
     spread = (lambda v: f" +/- {v.std(ddof=1):.4f} (sd over {len(v)} seeds)") if len(args.seeds) > 1 else (lambda v: "")
     summary = (f"Chosen on validation: {chosen} (mean val accuracy {by_model.loc[chosen, 'mean']:.4f} "
                f"over {len(args.seeds)} seed(s))\n"
                f"Test games: {' '.join(split.test_games)}  ({len(y_test)} events)\n"
                f"Test accuracy {acc.mean():.4f}{spread(acc)}  macro-F1 {f1.mean():.4f}{spread(f1)}  "
+               f"balanced accuracy {bal.mean():.4f}{spread(bal)}  "
                f"majority-class baseline {test_df['Majority_baseline'].iloc[0]:.4f}\n"
                f"95% interval, resampling test games (all seeds pooled): accuracy "
                f"{ci['Accuracy_CI'][0]:.3f}-{ci['Accuracy_CI'][1]:.3f}, macro-F1 "
