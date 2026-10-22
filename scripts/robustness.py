@@ -33,7 +33,7 @@ import pandas as pd
 from soccer.config import REPO_ROOT, data_path, load_config
 
 SPLITS = {"default": "configs/games.csv", "venue": "configs/games_venue_split.csv",
-          "epl2122": "configs/games_epl2122.csv"}
+          "epl2122": "configs/games_epl2122.csv", "epl1720": "configs/games_epl_1720.csv"}
 
 
 def manifest_for(split: str) -> str:

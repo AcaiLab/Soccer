@@ -1,0 +1,66 @@
+# MatchVision variant of pipeline.yaml: use with SOCCER_CONFIG=configs/pipeline_matchvision.yaml.
+# Same pipeline and labels; event features come from scripts/matchvision_features.py
+# (30 one-second frames per event) and live in features/temporal_MatchVision.
+
+# Pipeline configuration. Every script reads its defaults from here; any value
+# can still be overridden on the command line.
+#
+# Paths are relative to `data_root`, which defaults to the repository root and
+# can be changed with the SOCCER_DATA_ROOT environment variable (for example a
+# mounted volume on EC2 or SageMaker). `s3://bucket/prefix` URIs are accepted
+# wherever a storage location is read.
+#
+# Secrets never go in this file. The Dropbox token, shared-link URL and link
+# password come from environment variables or AWS SSM (see README).
+
+data_root: .
+
+# Which matches belong to the experiment and to which split. Relative to the
+# repository, not the data root.
+manifest: configs/games.csv
+excluded_matches: configs/excluded_matches.csv
+
+# Remote staging in S3 (set here or with SOCCER_S3_ROOT, e.g. s3://my-bucket):
+#   <s3_root>/videos/<league>/<match_id>/*.mkv   copied from Dropbox
+#   <s3_root>/json/                              annotation JSONs
+#   <s3_root>/features/, <s3_root>/results/      pipeline outputs
+s3_root: null
+
+# Where the annotation JSONs can be downloaded (no credentials needed for the
+# Google Drive copy; the Hugging Face repo is gated and needs HF_TOKEN).
+annotations_source:
+  google_drive_files:
+    train: 1xIHbuGBDGvNZ6bDGzKsWs6RGXoKR4YXp
+    valid: 1iNVSNV9ftZ-N6aE9WENoxZBabx7jIBsW
+    test: 1drO29-jvYl6xJutWzj7F4E_DyD6cn0Qj
+  huggingface_repo: Homie0609/SoccerReplay-1988
+
+paths:
+  videos: data/videos
+  annotations: data/json/Soccer_Data_Json
+  frames: frames_v2   # chosen by timestamp (docs/leak_audit.md, B19); replaces results_by_label_epl_2021_2022
+  features: features
+  results: results
+
+extraction:
+  # Seconds of video kept on each side of the commentary timestamp. Every game
+  # in one experiment must use the same window (see docs/leak_audit.md, B4).
+  before_sec: 30
+  after_sec: 30
+  sample_every_sec: 1
+  image_format: jpg
+  jpeg_quality: 90
+  write_clips: false
+
+features:
+  model: UniSoccer/MatchVision  # made by scripts/matchvision_features.py
+  max_frames: 30
+  batch_size: 32
+
+labels:
+  # Dropped before clustering and classification. Junk: scraper artefacts and
+  # empty labels. Non-visual: broadcast graphics with no on-pitch event.
+  junk: [unknown, wcl-icon-settings-info-rounded]
+  non_visual: [statistics_and_summary, show_added_time]
+
+seed: 42
