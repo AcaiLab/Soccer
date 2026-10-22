@@ -26,11 +26,50 @@ from sklearn.cluster import kmeans_plusplus
 from sklearn.manifold import TSNE
 from sklearn.metrics import adjusted_rand_score
 
+from soccer.annotations import tag_to_seconds
 from soccer.config import data_path, dropped_labels, load_config
-from soccer.features import load_temporal, mean_pool
-from soccer.manifest import manifest_games
+from soccer.features import center_per_group, load_temporal, mean_pool
+from soccer.frames import scan_events, select_frames
+from soccer.manifest import manifest_games, normalize_game_id
 
 MAX_STEPS = 300
+
+
+def frame_offsets(frames_root, max_frames: int) -> dict:
+    """(game, half, label, event_tag) -> seconds from the event of each encoded frame, in tensor order.
+
+    Rebuilt from the frame file names the same way the encoder chose them
+    (time order, thinned to max_frames), so position j of an event's tensor
+    row is offsets[j].
+    """
+    out = {}
+    for (game, half, label, tag), frames in scan_events(frames_root).items():
+        t0 = tag_to_seconds(tag)
+        out[(normalize_game_id(game), str(half), label, tag)] = [t - t0 for t, _ in select_frames(frames, max_frames)]
+    return out
+
+
+def window_masks(masks: np.ndarray, offsets: list, window: float) -> tuple[np.ndarray, int]:
+    """Keep only frames within +-window seconds of the event.
+
+    offsets[i] lists event i's frame offsets in tensor order, or is None when
+    unknown. An event with no frame in the window (or unknown offsets) keeps
+    all its frames; the count of such events is returned with the masks.
+    """
+    out = masks.copy()
+    kept_all = 0
+    for i, off in enumerate(offsets):
+        n = int(masks[i].sum())
+        if off is None or len(off) != n:
+            kept_all += 1
+            continue
+        near = np.zeros_like(masks[i])
+        near[:n] = np.abs(np.asarray(off)) <= window
+        if near.any():
+            out[i] = masks[i] & near
+        else:
+            kept_all += 1
+    return out, kept_all
 
 
 def kmeans_steps(x: np.ndarray, k: int, seed: int, max_steps: int = MAX_STEPS) -> list[np.ndarray]:
@@ -61,12 +100,26 @@ def main(argv=None):
     parser.add_argument("--features-dir", default=None, help="default: features/temporal_<model name>")
     parser.add_argument("--out", required=True, help="JSON file to write")
     parser.add_argument("--title", default="", help="shown on the page")
+    parser.add_argument("--window", type=float, default=0,
+                        help="average only frames within +-this many seconds of the event (0: all frames)")
+    parser.add_argument("--center-per-game", action="store_true",
+                        help="subtract each match's average event vector before clustering")
+    parser.add_argument("--frames-dir", default=None, help="frames used to rebuild frame times (default: config)")
     args = parser.parse_args(argv)
 
     seed = cfg["seed"]
     features_dir = pathlib.Path(args.features_dir or data_path(cfg, "features") / f"temporal_{prefix}")
     tf = load_temporal(features_dir, games=manifest_games(cfg)).drop_labels(dropped_labels(cfg))
-    x = mean_pool(tf.features, tf.masks)
+    masks = tf.masks
+    if args.window:
+        offs = frame_offsets(args.frames_dir or data_path(cfg, "frames"), tf.masks.shape[1])
+        keys = zip(tf.games, tf.halves, tf.labels, tf.event_tags, strict=True)
+        masks, kept_all = window_masks(tf.masks, [offs.get(k) for k in keys], args.window)
+        print(f"window +-{args.window:g}s: {masks.sum() / max(tf.masks.sum(), 1):.1%} of frames kept; "
+              f"{kept_all} events kept all frames (no frame in the window or unknown times)")
+    x = mean_pool(tf.features, masks)
+    if args.center_per_game:
+        x = center_per_group(x, tf.games)
     labels = sorted(set(tf.labels))
     games = sorted(set(tf.games))
     label_ids = np.array([labels.index(v) for v in tf.labels])
@@ -85,6 +138,8 @@ def main(argv=None):
         "title": args.title,
         "k": k,
         "settled": settled,
+        "window": args.window,
+        "center_per_game": args.center_per_game,
         "labels": labels,
         "games": games,
         "points": {"x": np.round(xy[:, 0], 4).tolist(), "y": np.round(xy[:, 1], 4).tolist(),

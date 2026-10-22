@@ -1,5 +1,5 @@
 import numpy as np
-from cluster_animation import kmeans_steps, purity
+from cluster_animation import kmeans_steps, purity, window_masks
 from sklearn.metrics import adjusted_rand_score
 
 
@@ -22,6 +22,22 @@ def test_steps_are_reproducible():
     first, second = kmeans_steps(x, 3, seed=1), kmeans_steps(x, 3, seed=1)
     assert len(first) == len(second)
     assert all(np.array_equal(a, b) for a, b in zip(first, second, strict=True))
+
+
+def test_window_keeps_frames_near_the_event_in_tensor_order():
+    masks = np.array([[1, 1, 1, 1, 0], [1, 1, 0, 0, 0], [1, 1, 1, 0, 0]], bool)
+    offsets = [[-6, -2, 3, 7], [-20, 20], None]
+    out, kept_all = window_masks(masks, offsets, window=5)
+    assert out[0].tolist() == [False, True, True, False, False]
+    assert out[1].tolist() == masks[1].tolist()  # nothing within 5 s: all frames kept
+    assert out[2].tolist() == masks[2].tolist()  # unknown times: all frames kept
+    assert kept_all == 2
+
+
+def test_window_ignores_offsets_that_do_not_match_the_frame_count():
+    masks = np.array([[1, 1, 1, 0]], bool)
+    out, kept_all = window_masks(masks, [[-1, 0]], window=5)
+    assert out.tolist() == masks.tolist() and kept_all == 1
 
 
 def test_purity():
