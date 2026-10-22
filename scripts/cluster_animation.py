@@ -30,7 +30,7 @@ from soccer.config import data_path, dropped_labels, load_config
 from soccer.features import load_temporal, mean_pool
 from soccer.manifest import manifest_games
 
-MAX_STEPS = 60
+MAX_STEPS = 300
 
 
 def kmeans_steps(x: np.ndarray, k: int, seed: int, max_steps: int = MAX_STEPS) -> list[np.ndarray]:
@@ -75,7 +75,8 @@ def main(argv=None):
     print(f"{len(x)} events, {len(games)} games, k = {k}")
 
     steps = kmeans_steps(x.astype(np.float64), k, seed)
-    print(f"K-Means settled after {len(steps)} assignment steps")
+    settled = len(steps) < MAX_STEPS
+    print(f"K-Means {'settled after' if settled else 'stopped, still moving, at'} {len(steps)} assignment steps")
     xy = TSNE(n_components=2, perplexity=min(30, len(x) - 1), max_iter=1000,
               random_state=seed, init="pca").fit_transform(x)
     xy = (xy - xy.min(0)) / (xy.max(0) - xy.min(0)).clip(min=1e-9)
@@ -83,6 +84,7 @@ def main(argv=None):
     out = {
         "title": args.title,
         "k": k,
+        "settled": settled,
         "labels": labels,
         "games": games,
         "points": {"x": np.round(xy[:, 0], 4).tolist(), "y": np.round(xy[:, 1], 4).tolist(),
