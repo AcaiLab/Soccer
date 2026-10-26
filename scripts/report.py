@@ -27,7 +27,7 @@ import pandas as pd
 from robustness import read_test_summary
 from sklearn.metrics import balanced_accuracy_score
 
-from soccer.config import data_path, load_config
+from soccer.config import data_path, encoder_label, load_config
 from soccer.frames import describe_time_check, time_check
 from soccer.manifest import manifest_games
 from soccer.metrics import bootstrap_ci
@@ -144,7 +144,7 @@ def cv_section(results: pathlib.Path) -> list[str]:
     return out
 
 
-def robustness_section(results: pathlib.Path) -> list[str]:
+def robustness_section(results: pathlib.Path, encoder: str = "DINOv2") -> list[str]:
     path = results / "robustness" / "all_runs.csv"
     if not path.is_file():
         return []
@@ -152,7 +152,7 @@ def robustness_section(results: pathlib.Path) -> list[str]:
     df = df[~df.split.str.match(CV_SPLIT)]  # folds have their own section
     if df.empty:
         return []
-    out = ["## Contrastive head (triplet loss on frozen DINOv2)", "",
+    out = [f"## Contrastive head (triplet loss on frozen {encoder})", "",
            "Held-out games are matches the head never saw. Values are mean ± sd over seeds; "
            "the change is computed within each seed.", ""]
     rows = []
@@ -167,7 +167,7 @@ def robustness_section(results: pathlib.Path) -> list[str]:
             change = f"{p[0]:+.3f} ± {p[1]:.3f} ({p[3]}/{p[2]} seeds up)" if p else "n/a"
             rows.append([SPLIT_NAMES.get(split, split), what, fmt(mean[before], sd[before]),
                          fmt(mean[after], sd[after]), change])
-    out += [table(["Split", "Held-out games", "Before (DINOv2)", "After (head)", "Change"], rows), ""]
+    out += [table(["Split", "Held-out games", f"Before ({encoder})", "After (head)", "Change"], rows), ""]
     train_rows = []
     for split in df.split.unique():
         s = df[df.split == split].groupby("metric")["value"]
@@ -283,7 +283,7 @@ def main(argv=None):
     results = pathlib.Path(args.results)
     sections = (clustering_section(results) + labels_section(results) + single_run_section(results)
                 + cv_section(results)
-                + robustness_section(results))
+                + robustness_section(results, encoder_label(cfg)))
     if not sections:
         raise SystemExit(f"No result files found under {results}")
     sections += timing_section(pathlib.Path(args.frames), set(manifest_games(cfg)))

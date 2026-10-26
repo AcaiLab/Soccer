@@ -48,6 +48,11 @@ def repo_path(cfg: dict, key: str) -> pathlib.Path:
     return p if p.is_absolute() else REPO_ROOT / p
 
 
+def encoder_label(cfg: dict) -> str:
+    """Short name of the frame encoder for tables and plots."""
+    return "MatchVision" if "matchvision" in cfg["features"]["model"].lower() else "DINOv2"
+
+
 def dropped_labels(cfg: dict) -> set[str]:
     """Labels removed before clustering and classification."""
     labels = cfg.get("labels", {})

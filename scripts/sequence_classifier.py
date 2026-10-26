@@ -1,5 +1,5 @@
 """
-Sequence models over per-frame DINOv2 features for event classification.
+Sequence models over per-frame frozen features (DINOv2 or MatchVision) for event classification.
 
 Instead of pooling the 60-frame window into a single vector, these models
 consume the full (60, 768) sequence, using temporal ordering:
@@ -11,11 +11,11 @@ consume the full (60, 768) sequence, using temporal ordering:
 
 Protocol (leak-free, by game, from the manifest):
     train games fit the weights, val games pick the stopping epoch and the
-    model, and only the chosen model is scored on the test games. With
-    --seeds, every model is trained once per seed, the model with the best
-    mean validation accuracy is chosen, and its test accuracy is reported as
-    mean and standard deviation over seeds plus a 95% interval from
-    resampling test games.
+    model (both by macro-F1, accuracy breaking ties), and only the chosen
+    model is scored on the test games. With --seeds, every model is trained
+    once per seed, the model with the best mean validation macro-F1 is
+    chosen, and its test scores are reported as mean and standard deviation
+    over seeds plus a 95% interval from resampling test games.
 Per-dimension standardisation uses training frames only.
 
 Usage:
@@ -29,7 +29,7 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
-from sklearn.metrics import classification_report
+from sklearn.metrics import classification_report, f1_score
 
 from soccer.config import data_path, dropped_labels, load_config, repo_path
 from soccer.encoding import pick_device
@@ -160,7 +160,8 @@ def main(argv=None):
         model = cls(tf.features.shape[2], args.hidden_dim, len(classes), tf.features.shape[1]).to(device)
         opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
         crit = nn.CrossEntropyLoss()
-        best_val, best_state, wait, stopped = -1.0, None, 0, 0
+        best_val, best_state, wait, stopped = (-1.0, -1.0), None, 0, 0
+        y_val = y[split.val & keep]
         # One generator per run, so each epoch gets a new (but reproducible) order.
         order = torch.Generator().manual_seed(seed)
         for epoch in range(1, args.epochs + 1):
@@ -170,9 +171,10 @@ def main(argv=None):
                 opt.zero_grad()
                 crit(model(xb.to(device), mb.to(device)), yb.to(device)).backward()
                 opt.step()
-            val_acc = float(np.mean(predict(model, split.val) == y[split.val & keep]))
-            if val_acc > best_val:
-                best_val, wait = val_acc, 0
+            pred = predict(model, split.val)
+            val = (f1_score(y_val, pred, average="macro", zero_division=0), float(np.mean(pred == y_val)))
+            if val > best_val:  # macro-F1, then accuracy
+                best_val, wait = val, 0
                 best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
             else:
                 wait += 1
@@ -186,12 +188,16 @@ def main(argv=None):
     rows, runs = [], {}
     for name, cls in MODELS.items():
         for seed in args.seeds:
-            model, val_acc, stopped = train(cls, seed)
+            model, (val_f1, val_acc), stopped = train(cls, seed)
             runs[(name, seed)] = model
-            rows.append({"model": name, "seed": seed, "val_acc": val_acc, "stopped_epoch": stopped})
-            print(f"{name:14s} seed {seed}  stopped@{stopped:3d}  best val accuracy={val_acc:.1%}")
+            rows.append({"model": name, "seed": seed, "val_macro_f1": val_f1, "val_acc": val_acc,
+                         "stopped_epoch": stopped})
+            print(f"{name:14s} seed {seed}  stopped@{stopped:3d}  best val macro-F1={val_f1:.3f} "
+                  f"accuracy={val_acc:.1%}")
     df = pd.DataFrame(rows)
-    by_model = df.groupby("model")["val_acc"].agg(["mean", "std"]).sort_values("mean", ascending=False)
+    by_model = (df.groupby("model").agg(mean=("val_macro_f1", "mean"), std=("val_macro_f1", "std"),
+                                        val_acc=("val_acc", "mean"))
+                .sort_values(["mean", "val_acc"], ascending=False))
     chosen = by_model.index[0]
 
     # Test only the chosen model, once per seed.
@@ -213,7 +219,7 @@ def main(argv=None):
     test_df.to_csv(out_dir / "sequence_test_by_seed.csv", index=False)
     acc, f1, bal = test_df["Accuracy"], test_df["Macro_F1"], test_df["Balanced_accuracy"]
     spread = (lambda v: f" +/- {v.std(ddof=1):.4f} (sd over {len(v)} seeds)") if len(args.seeds) > 1 else (lambda v: "")
-    summary = (f"Chosen on validation: {chosen} (mean val accuracy {by_model.loc[chosen, 'mean']:.4f} "
+    summary = (f"Chosen on validation: {chosen} (mean val macro-F1 {by_model.loc[chosen, 'mean']:.4f} "
                f"over {len(args.seeds)} seed(s))\n"
                f"Test games: {' '.join(split.test_games)}  ({len(y_test)} events)\n"
                f"Test accuracy {acc.mean():.4f}{spread(acc)}  macro-F1 {f1.mean():.4f}{spread(f1)}  "
@@ -225,7 +231,7 @@ def main(argv=None):
     present = sorted(set(y_test) | set(preds[0]))
     report = classification_report(y_test, preds[0], labels=present,
                                    target_names=[classes[i] for i in present], zero_division=0)
-    details = (f"\nValidation accuracy by model (mean, sd over seeds):\n{by_model.to_string()}\n\n"
+    details = (f"\nValidation macro-F1 by model (mean, sd over seeds; val_acc is mean accuracy):\n{by_model.to_string()}\n\n"
                f"Per-class report (seed {args.seeds[0]}):\n{report}")
     (out_dir / "sequence_classification_report.txt").write_text(summary + details)
     print("\n" + summary + details)

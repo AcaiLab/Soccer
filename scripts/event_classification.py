@@ -1,17 +1,18 @@
 """
 Event Classification Pipeline
 ==============================
-Evaluates event classification accuracy using DINOv2 temporal features
+Evaluates event classification using frozen per-frame features (DINOv2 or MatchVision)
 with several pooling strategies and classifiers.
 
 Compares:
   - Pooling strategies: mean, max, first frame, last frame
   - Classifiers: Linear SVM, Logistic Regression, MLP
-  - Embeddings: raw DINOv2 vs contrastive-projected (if available)
+  - Embeddings: raw frozen features vs contrastive-projected (if available)
 
 Protocol: games are split train / val / test by the manifest. Every
-configuration is fit on train and ranked on val; only the chosen one is
-scored on test, together with macro-F1 and the majority-class baseline.
+configuration is fit on train and ranked on val macro-F1; only the chosen one
+is scored on test, together with accuracy, balanced accuracy and the
+majority-class baseline.
 
 Usage:
     python scripts/event_classification.py
@@ -30,8 +31,9 @@ import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 from sklearn.metrics import ConfusionMatrixDisplay, classification_report, confusion_matrix  # noqa: E402
 
-from soccer.config import data_path, dropped_labels, load_config, repo_path  # noqa: E402
+from soccer.config import data_path, dropped_labels, encoder_label, load_config, repo_path  # noqa: E402
 from soccer.evaluation import (  # noqa: E402
+    SELECTION,
     format_test_summary,
     save_test_predictions,
     select_on_validation,
@@ -86,14 +88,14 @@ def main(argv=None):
                           args.val_games, args.test_games)
     print(f"Events: train={split.train.sum()} val={split.val.sum()} test={split.test.sum()}")
 
-    feature_sets = {f"DINOv2 {name}": fn(tf.features, tf.masks) for name, fn in POOLING.items()}
+    feature_sets = {f"{encoder_label(cfg)} {name}": fn(tf.features, tf.masks) for name, fn in POOLING.items()}
     cont = load_contrastive(pathlib.Path(args.contrastive_features) / "contrastive_embeddings.npz", tf,
                             set(tf.games[split.val | split.test]))
     if cont is not None:
         feature_sets["Contrastive (triplet head)"] = cont
 
     rows, chosen = select_on_validation(feature_sets, tf.labels, split, seed, games=tf.games)
-    pd.DataFrame(rows).sort_values("Val_accuracy", ascending=False).to_csv(
+    pd.DataFrame(rows).sort_values(SELECTION, ascending=False).to_csv(
         out_dir / "classification_results.csv", index=False)
 
     y_true, y_pred = chosen.pop("y_true"), chosen.pop("y_pred")
@@ -107,15 +109,14 @@ def main(argv=None):
 
     df = pd.DataFrame(rows)
     fig, ax = plt.subplots(figsize=(14, 6))
-    best_val = df.groupby("Features")["Val_accuracy"].max().reindex(list(feature_sets))
+    best_val = df.groupby("Features")["Val_macro_F1"].max().reindex(list(feature_sets))
     bars = ax.bar(range(len(best_val)), best_val.values,
                   color=["#2ca02c" if f.startswith("Contrastive") else "#1f77b4" for f in best_val.index], alpha=0.8)
-    ax.bar_label(bars, labels=[f"{v * 100:.1f}%" for v in best_val.values], fontsize=9)
-    ax.axhline(chosen["Test_Majority_baseline"], color="red", linestyle="--", label="majority class (test)")
-    ax.scatter([list(feature_sets).index(chosen["Features"])], [chosen["Test_Accuracy"]], color="black",
-               zorder=3, label=f"chosen config, test accuracy {chosen['Test_Accuracy'] * 100:.1f}%")
+    ax.bar_label(bars, labels=[f"{v:.3f}" for v in best_val.values], fontsize=9)
+    ax.scatter([list(feature_sets).index(chosen["Features"])], [chosen["Test_Macro_F1"]], color="black",
+               zorder=3, label=f"chosen config, test macro-F1 {chosen['Test_Macro_F1']:.3f}")
     ax.set_xticks(range(len(best_val)), [f.replace(" ", "\n", 1) for f in best_val.index], fontsize=9)
-    ax.set_ylabel("Validation accuracy (best classifier)")
+    ax.set_ylabel("Validation macro-F1 (best classifier)")
     ax.set_title("Event classification by representation (bars: validation; dot: test of the chosen config)",
                  fontsize=12, fontweight="bold")
     ax.legend(fontsize=9)

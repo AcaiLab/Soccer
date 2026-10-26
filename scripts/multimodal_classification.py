@@ -1,11 +1,11 @@
 """
 Multimodal Event Classifier
 ============================
-Combines DINOv2 visual features (mean-pooled over the event window) with
+Combines frozen visual features (DINOv2 or MatchVision, mean-pooled over the event window) with
 annotation-only game flow features (temporal context) for event classification.
 
 Compares three feature sets:
-  (1) Visual only     - DINOv2 mean-pooled
+  (1) Visual only     - frozen features, mean-pooled
   (2) Annotation only - game flow context (soccer/game_flow.py)
   (3) Multimodal      - both, concatenated
 
@@ -14,7 +14,7 @@ without a partner are left out, so the test set is smaller than in
 event_classification.py and the two are not directly comparable.
 
 Protocol: train / val / test games from the manifest; every configuration is
-ranked on validation and only the chosen one is scored on test. Game-flow
+ranked on validation macro-F1 and only the chosen one is scored on test. Game-flow
 categories are encoded with an encoder fit on training events only.
 Annotation features use true previous labels, so they are an upper bound.
 
@@ -36,8 +36,9 @@ import pandas as pd  # noqa: E402
 from sklearn.metrics import classification_report  # noqa: E402
 
 from soccer.annotations import match_minute, tag_to_seconds  # noqa: E402
-from soccer.config import data_path, dropped_labels, load_config, repo_path  # noqa: E402
+from soccer.config import data_path, dropped_labels, encoder_label, load_config, repo_path  # noqa: E402
 from soccer.evaluation import (  # noqa: E402
+    SELECTION,
     format_test_summary,
     save_test_predictions,
     select_on_validation,
@@ -104,14 +105,14 @@ def main(argv=None):
     X_gf = enc.transform(gf.loc[gf_idx, FEATURES])
     X_gf = X_gf.toarray() if hasattr(X_gf, "toarray") else X_gf
     feature_sets = {
-        "Visual only (DINOv2 mean)": X_vis,
+        f"Visual only ({encoder_label(cfg)} mean)": X_vis,
         "Annotation only (game flow)": X_gf.astype(np.float32),
         "Multimodal (visual + annot)": np.hstack([X_vis, X_gf]).astype(np.float32),
     }
     print(f"Events: train={split.train.sum()} val={split.val.sum()} test={split.test.sum()}")
 
     rows, chosen = select_on_validation(feature_sets, labels, split, seed, games=games)
-    pd.DataFrame(rows).sort_values("Val_accuracy", ascending=False).to_csv(
+    pd.DataFrame(rows).sort_values(SELECTION, ascending=False).to_csv(
         out_dir / "multimodal_results.csv", index=False)
     y_true, y_pred = chosen.pop("y_true"), chosen.pop("y_pred")
     test_idx = vis_idx[split.test]
@@ -122,16 +123,14 @@ def main(argv=None):
     (out_dir / "multimodal_classification_report.txt").write_text(summary + "\n" + report)
     print("\n" + summary + "\n" + report)
 
-    best_val = pd.DataFrame(rows).groupby("Features")["Val_accuracy"].max().reindex(list(feature_sets))
+    best_val = pd.DataFrame(rows).groupby("Features")["Val_macro_F1"].max().reindex(list(feature_sets))
     fig, ax = plt.subplots(figsize=(10, 5))
     bars = ax.bar(range(len(best_val)), best_val.values, color=["#1f77b4", "#ff7f0e", "#2ca02c"], alpha=0.85)
-    ax.bar_label(bars, labels=[f"{v * 100:.1f}%" for v in best_val.values], fontsize=11)
-    ax.axhline(chosen["Test_Majority_baseline"], color="red", linestyle="--", label="majority class (test)")
+    ax.bar_label(bars, labels=[f"{v:.3f}" for v in best_val.values], fontsize=11)
     ax.set_xticks(range(len(best_val)), [n.replace(" (", "\n(") for n in best_val.index], fontsize=10)
-    ax.set_ylabel("Validation accuracy (best classifier)")
-    ax.set_title(f"Multimodal vs unimodal (chosen: {chosen['Features']}, test accuracy "
-                 f"{chosen['Test_Accuracy'] * 100:.1f}%)", fontsize=11, fontweight="bold")
-    ax.legend(fontsize=9)
+    ax.set_ylabel("Validation macro-F1 (best classifier)")
+    ax.set_title(f"Multimodal vs unimodal (chosen: {chosen['Features']}, test macro-F1 "
+                 f"{chosen['Test_Macro_F1']:.3f})", fontsize=11, fontweight="bold")
     ax.grid(axis="y", alpha=0.3)
     plt.tight_layout()
     fig.savefig(out_dir / "multimodal_comparison.png", dpi=150, bbox_inches="tight")

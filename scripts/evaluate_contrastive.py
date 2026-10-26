@@ -34,7 +34,7 @@ from sklearn.cluster import KMeans  # noqa: E402
 from sklearn.manifold import TSNE  # noqa: E402
 from sklearn.metrics import silhouette_score  # noqa: E402
 
-from soccer.config import data_path, dropped_labels, load_config  # noqa: E402
+from soccer.config import data_path, dropped_labels, encoder_label, load_config  # noqa: E402
 from soccer.features import load_temporal, mean_pool  # noqa: E402
 from soccer.manifest import manifest_games  # noqa: E402
 from soccer.metrics import clustering_scores, game_vs_event_scores  # noqa: E402
@@ -73,6 +73,7 @@ def scatter_pair(maps, colors, cmap, vmax, titles, suptitle, path, handles=None)
 
 def main(argv=None):
     cfg = load_config()
+    before_rep = f"{encoder_label(cfg)} (before)"
     prefix = cfg["features"]["model"].split("/")[-1]
     features_root = data_path(cfg, "features")
     parser = argparse.ArgumentParser(description="Evaluate the contrastive head on held-out and train games.")
@@ -110,7 +111,7 @@ def main(argv=None):
     rows, cache = [], {}
     for group, m in groups.items():
         print(f"\n[{group}] {m.sum()} events from {len(set(tf.games[m]))} games")
-        for rep, feats in [("DINOv2 (before)", before), ("Contrastive (after)", after)]:
+        for rep, feats in [(before_rep, before), ("Contrastive (after)", after)]:
             cluster_ids, metrics = score(feats[m], tf.labels[m], tf.games[m], seed)
             cache[(group, rep)] = cluster_ids
             rows.append({"Group": group, "Representation": rep, "Events": int(m.sum()), **metrics})
@@ -132,7 +133,7 @@ def main(argv=None):
                    for i, c in enumerate(classes)]
     xy_before, xy_after = tsne(before[m], seed), tsne(after[m], seed)
     r = {rep: metrics_df[(metrics_df.Group == "held-out games") & (metrics_df.Representation == rep)].iloc[0]
-         for rep in ("DINOv2 (before)", "Contrastive (after)")}
+         for rep in (before_rep, "Contrastive (after)")}
     titles = [f"{rep}\nARI={r[rep].ARI:.3f}  Purity={r[rep].Purity:.3f} (random {r[rep].Purity_random:.3f})"
               for rep in r]
 
@@ -140,7 +141,7 @@ def main(argv=None):
                  f"Held-out games ({', '.join(game_names)}): before vs after, coloured by event label",
                  out_dir / "before_vs_after_labels.png", lab_handles)
     scatter_pair([xy_before, xy_after], [game_ids, game_ids], game_cmap, len(game_names) - 1,
-                 ["DINOv2 (before)", "Contrastive (after)"],
+                 [before_rep, "Contrastive (after)"],
                  "Held-out games: before vs after, coloured by game", out_dir / "before_vs_after_games.png")
     km = cache[("held-out games", "Contrastive (after)")]
     scatter_pair([xy_after] * 3, [lab_ids, game_ids, km], "tab20", max(len(classes), len(game_names)) - 1,
@@ -152,7 +153,7 @@ def main(argv=None):
     for ax, group in zip(axes, groups, strict=True):
         sub = metrics_df[metrics_df.Group == group]
         x = np.arange(3)
-        for j, rep in enumerate(("DINOv2 (before)", "Contrastive (after)")):
+        for j, rep in enumerate((before_rep, "Contrastive (after)")):
             vals = sub[sub.Representation == rep][["ARI", "Purity", "Silhouette"]].iloc[0].values
             bars = ax.bar(x + (j - 0.5) * 0.35, vals, 0.35, label=rep, alpha=0.85)
             ax.bar_label(bars, fmt="%.3f", fontsize=9)

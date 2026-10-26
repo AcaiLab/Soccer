@@ -117,7 +117,7 @@ def main(argv=None):
             rows.append({"Features": subset, "Classifier": clf_name,
                          "Val_accuracy": s["Accuracy"], "Val_macro_F1": s["Macro_F1"]})
             print(f"  {subset:<30s} {clf_name:<14s} val acc={s['Accuracy']:.3f}  macro-F1={s['Macro_F1']:.3f}")
-    val_df = pd.DataFrame(rows).sort_values("Val_accuracy", ascending=False)
+    val_df = pd.DataFrame(rows).sort_values(["Val_macro_F1", "Val_accuracy"], ascending=False)
     val_df.to_csv(out_dir / "temporal_classification_results.csv", index=False)
     best = val_df.iloc[0]
 
@@ -141,12 +141,12 @@ def main(argv=None):
         fig.savefig(out_dir / "feature_importance.png", dpi=150, bbox_inches="tight")
         plt.close(fig)
 
-    best_per = val_df.groupby("Features")["Val_accuracy"].max().reindex(list(SUBSETS))
+    best_per = val_df.groupby("Features")["Val_macro_F1"].max().reindex(list(SUBSETS))
     fig, ax = plt.subplots(figsize=(10, 5))
     bars = ax.bar(range(len(best_per)), best_per.values, color="#1f77b4", alpha=0.85)
-    ax.bar_label(bars, labels=[f"{v * 100:.1f}%" for v in best_per.values])
+    ax.bar_label(bars, labels=[f"{v:.3f}" for v in best_per.values])
     ax.set_xticks(range(len(best_per)), [n.replace(" (", "\n(") for n in best_per.index], fontsize=9)
-    ax.set_ylabel("Validation accuracy (best classifier)")
+    ax.set_ylabel("Validation macro-F1 (best classifier)")
     ax.set_title(f"Annotation-only classification by feature subset\n(chosen config: test accuracy "
                  f"{s['Accuracy'] * 100:.1f}% on {args.test_league}, majority {s['Majority_baseline'] * 100:.1f}%)",
                  fontsize=11, fontweight="bold")

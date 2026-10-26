@@ -5,6 +5,10 @@ training games and compared on validation games; only the chosen configuration
 is then scored on the test games, once. Choosing the best of many
 configurations by test score would make the reported number optimistic
 (docs/leak_audit.md, B5).
+
+Candidates are ranked by validation macro-F1, the main metric, with validation
+accuracy breaking ties: ranking by accuracy favours models that do well on the
+common event types and can pick a different winner than the reported metric.
 """
 
 from __future__ import annotations
@@ -21,6 +25,12 @@ from sklearn.svm import LinearSVC
 
 from soccer.manifest import Game, assert_disjoint, game_nums, normalize_game_id
 from soccer.metrics import bootstrap_ci, classification_scores
+
+SELECTION = ["Val_macro_F1", "Val_accuracy"]  # rank order of the validation scores
+
+
+def selection_key(row: dict) -> tuple:
+    return tuple(row[k] for k in SELECTION)
 
 
 @dataclass
@@ -74,7 +84,7 @@ def sklearn_classifiers(seed: int) -> dict:
 
 def select_on_validation(feature_sets: dict[str, np.ndarray], labels: np.ndarray, split: Split,
                          seed: int, games: np.ndarray | None = None) -> tuple[list[dict], dict]:
-    """Fit every (features, classifier) pair on train, rank on validation, test the winner.
+    """Fit every (features, classifier) pair on train, rank on validation macro-F1, test the winner.
 
     Returns (validation rows for every candidate, result for the chosen one with
     test metrics, predictions and, if `games` is given, 95% intervals from
@@ -91,7 +101,7 @@ def select_on_validation(feature_sets: dict[str, np.ndarray], labels: np.ndarray
             rows.append(row)
             print(f"  {feat_name:<34s} {clf_name:<10s} val acc={scores['Accuracy']:.3f}  "
                   f"macro-F1={scores['Macro_F1']:.3f}")
-            if best is None or row["Val_accuracy"] > best["row"]["Val_accuracy"]:
+            if best is None or selection_key(row) > selection_key(best["row"]):
                 best = {"row": row, "clf": clf, "X": X}
 
     test_pred = best["clf"].predict(best["X"][split.test])
@@ -126,7 +136,8 @@ def format_test_summary(chosen: dict, split: Split, n_events: int, kind: str = "
         (alo, ahi), (flo, fhi) = chosen["Test_Accuracy_CI"], chosen["Test_Macro_F1_CI"]
         ci = (f"95% interval, resampling test games: accuracy {alo:.3f}-{ahi:.3f}, "
               f"macro-F1 {flo:.3f}-{fhi:.3f}\n")
-    return (f"Chosen on validation: {chosen['Features']} + {chosen['Classifier']}\n"
+    return (f"Chosen on validation: {chosen['Features']} + {chosen['Classifier']} "
+            f"(val macro-F1 {chosen['Val_macro_F1']:.4f}, accuracy {chosen['Val_accuracy']:.4f})\n"
             f"Test games: {' '.join(split.test_games)}  ({n_events} {kind})\n"
             f"Test accuracy {chosen['Test_Accuracy']:.4f}  macro-F1 {chosen['Test_Macro_F1']:.4f}  "
             f"balanced accuracy {chosen['Test_Balanced_accuracy']:.4f}  "
