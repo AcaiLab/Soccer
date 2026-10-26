@@ -8,6 +8,7 @@ it, so every number in the write-up comes from a file:
   within_game/within_game_metrics.csv    clustering inside each match
   robustness/all_runs.csv                every seed of every split
   robustness/<split>/*/..._report.txt    per-seed test scores and game-resampled intervals
+  per_class/per_class.md                 per-class F1 next to class counts
   <frames>/game_XX_half_N/extraction.json  how exact each half's frame times are
 
 Differences that matter (contrastive head after vs before, sequence vs pooled)
@@ -271,6 +272,14 @@ def labels_section(results: pathlib.Path) -> list[str]:
     return ["## Labels: what is kept and what is excluded", "", path.read_text(encoding="utf-8").strip(), ""]
 
 
+def per_class_section(results: pathlib.Path) -> list[str]:
+    """Per-class F1 next to class counts, from scripts/per_class.py."""
+    path = results / "per_class" / "per_class.md"
+    if not path.is_file():
+        return []
+    return ["## Per-class scores and class sizes", "", path.read_text(encoding="utf-8").strip(), ""]
+
+
 def main(argv=None):
     cfg = load_config()
     parser = argparse.ArgumentParser(description="Write report.md from a run's result files.")
@@ -283,7 +292,7 @@ def main(argv=None):
     results = pathlib.Path(args.results)
     sections = (clustering_section(results) + labels_section(results) + single_run_section(results)
                 + cv_section(results)
-                + robustness_section(results, encoder_label(cfg)))
+                + robustness_section(results, encoder_label(cfg)) + per_class_section(results))
     if not sections:
         raise SystemExit(f"No result files found under {results}")
     sections += timing_section(pathlib.Path(args.frames), set(manifest_games(cfg)))
